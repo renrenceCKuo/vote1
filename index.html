@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Excel 匯入型線上投票系統</title>
+    <!-- 載入 Tailwind CSS 用於快速樣式設計 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 載入 FontAwesome 圖示庫 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- 載入 SheetJS 用於解析與匯出 Excel 檔案 -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- 載入 SweetAlert2 用於美觀的彈出視窗 -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#4F46E5',
+                        secondary: '#10B981'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&display=swap');
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: #F3F4F6;
+        }
+        .fade-in {
+            animation: fadeIn 0.5s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="min-h-screen text-gray-800">
+
+    <nav class="bg-primary text-white shadow-lg sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16 items-center">
+                <div class="flex items-center gap-3">
+                    <i class="fa-solid fa-check-to-slot text-2xl"></i>
+                    <span class="font-bold text-xl tracking-wider">中正國中線上投票系統(copyright by C.Kuo)</span>
+                </div>
+                <div id="nav-actions" class="hidden flex gap-2">
+                    <button onclick="switchView('voting-view')" class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white hover:text-primary transition">
+                        <i class="fa-solid fa-users mr-1"></i> 候選人列表
+                    </button>
+                    <button onclick="switchView('results-view')" class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white hover:text-primary transition">
+                        <i class="fa-solid fa-chart-bar mr-1"></i> 查看結果
+                    </button>
+                    <button onclick="exportResults()" class="px-3 py-2 bg-secondary rounded-md text-sm font-medium hover:bg-green-600 transition shadow">
+                        <i class="fa-solid fa-download mr-1"></i> 匯出結果
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        
+        <!-- 區塊 1：從雲端載入資料畫面 -->
+        <section id="upload-view" class="fade-in max-w-2xl mx-auto mt-10">
+            <div class="bg-white rounded-2xl shadow-xl overflow-hidden">
+                <div class="p-8 text-center">
+                    <div class="w-20 h-20 mx-auto bg-indigo-100 rounded-full flex items-center justify-center mb-6">
+                        <i class="fa-solid fa-cloud-arrow-down text-4xl text-primary"></i>
+                    </div>
+                    <h2 class="text-2xl font-bold mb-2">正在連接雲端資料庫</h2>
+                    <p class="text-gray-500 mb-6">系統將自動從 Google 試算表載入候選人名單，請稍候...</p>
+                    
+                    <button onclick="loadFromGoogleSheet()" class="bg-primary hover:bg-indigo-700 text-white font-bold py-3 px-8 rounded-xl shadow-md transition-colors text-lg flex items-center justify-center gap-2 mx-auto">
+                        <i class="fa-solid fa-sync"></i> 手動重新載入
+                    </button>
+                </div>
+                <div class="bg-gray-50 px-8 py-4 border-t border-gray-100 flex justify-center">
+                    <button onclick="loadSampleData()" class="text-sm text-primary hover:underline font-medium">
+                        <i class="fa-solid fa-magic mr-1"></i> 無法載入？載入範例資料測試
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- 區塊 2：投票介面 -->
+        <section id="voting-view" class="hidden fade-in pb-24">
+            <div class="bg-white rounded-xl shadow-md p-6 mb-8 border-t-4 border-primary">
+                <h3 class="text-lg font-bold text-gray-800 mb-4"><i class="fa-solid fa-user-pen mr-2"></i>請輸入您的基本資料 (必填)</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="voter-id" class="block text-sm font-medium text-gray-700 mb-1">投票編號</label>
+                        <input type="text" id="voter-id" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition" placeholder="請輸入您的投票編號">
+                    </div>
+                    <div>
+                        <label for="voter-name" class="block text-sm font-medium text-gray-700 mb-1">姓名</label>
+                        <input type="text" id="voter-name" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition" placeholder="請輸入您的姓名">
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex justify-between items-end mb-6">
+                <div>
+                    <h2 class="text-2xl font-bold text-gray-800">請選擇您支持的候選人</h2>
+                    <p class="text-gray-500 mt-1" id="total-candidates-text">共載入 0 位候選人</p>
+                </div>
+                <div class="text-sm text-gray-500 bg-white px-4 py-2 rounded-full shadow-sm">
+                    每人限投 1 至 5 票
+                </div>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="candidates-grid">
+                <!-- 候選人卡片將由 JavaScript 動態生成於此 -->
+            </div>
+
+            <!-- 浮動送出按鈕 -->
+            <div class="fixed bottom-0 left-0 w-full bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] p-4 z-40">
+                <div class="max-w-7xl mx-auto px-4 flex justify-between items-center">
+                    <div class="text-gray-700 font-medium">
+                        已選擇：<span id="selected-count" class="text-primary font-bold text-xl">0</span> / 5
+                    </div>
+                    <button onclick="submitVotes()" class="bg-primary hover:bg-indigo-700 text-white font-bold py-2 px-8 rounded-lg shadow-md transition-colors text-lg flex items-center gap-2">
+                        <i class="fa-solid fa-paper-plane"></i> 確認送出選票
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- 區塊 3：投票結果 -->
+        <section id="results-view" class="hidden fade-in">
+            <div class="bg-white rounded-2xl shadow-xl p-8">
+                <div class="flex justify-between items-center mb-8 border-b pb-4">
+                    <h2 class="text-2xl font-bold text-gray-800">
+                        <i class="fa-solid fa-trophy text-yellow-500 mr-2"></i>即時投票結果
+                    </h2>
+                    <div class="text-lg font-bold text-primary bg-indigo-50 px-4 py-2 rounded-lg">
+                        總投票數：<span id="total-votes-count">0</span>
+                    </div>
+                </div>
+                
+                <div id="results-container" class="space-y-6">
+                    <!-- 結果進度條將由 JavaScript 動態生成於此 -->
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <script>
+        // 全域狀態變數
+        let candidatesData = [];
+        let totalVotes = 0;
+        let originalColumns = []; // 紀錄原始 Excel 欄位名稱
+        let selectedCandidates = new Set(); // 紀錄目前選擇的候選人 ID
+        let votedIds = new Set(JSON.parse(localStorage.getItem('votedIds') || '[]')); // 紀錄已經投過票的投票編號 (防重新整理)
+
+        /**
+         * 網頁載入完成後自動讀取 Google Sheets
+         */
+        window.addEventListener('DOMContentLoaded', () => {
+            loadFromGoogleSheet();
+        });
+
+        /**
+         * 處理從 Google Sheets 載入資料
+         */
+        async function loadFromGoogleSheet() {
+            // 解析您提供的 Google 試算表 ID
+            const sheetId = '1awdlq60JBuo9A2abybu030Vum59zNT7s';
+            // 使用 Google 試算表的 CSV 匯出 API (需確認權限為「知道連結的人均可檢視」)
+            const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv`;
+            
+            // 顯示載入中提示
+            Swal.fire({
+                title: '正在下載雲端名單...',
+                text: '請稍候',
+                allowOutsideClick: false,
+                didOpen: () => {
+                    Swal.showLoading();
+                }
+            });
+
+            try {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error('網路回應錯誤');
+                const csvText = await response.text();
+                
+                // 使用 SheetJS 讀取 CSV 字串
+                const workbook = XLSX.read(csvText, {type: 'string'});
+                const firstSheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[firstSheetName];
+                
+                // 將工作表轉換為 JSON 陣列
+                const json = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+                
+                if (json.length === 0) {
+                    throw new Error("表格似乎是空的。");
+                }
+
+                // 記錄所有欄位名稱，以便動態顯示
+                originalColumns = Object.keys(json[0]);
+
+                // 初始化候選人資料 (加上內部 ID 和初始票數 0)
+                candidatesData = json.map((row, index) => {
+                    return {
+                        _id: index, // 系統內部 ID
+                        _votes: 0,  // 票數計數器
+                        ...row      // 保留所有原始資料
+                    };
+                });
+
+                Swal.fire({
+                    icon: 'success',
+                    title: '讀取成功！',
+                    text: `共載入 ${candidatesData.length} 筆資料`,
+                    timer: 1500,
+                    showConfirmButton: false
+                });
+
+                // 更新介面
+                initVotingSystem();
+
+            } catch (error) {
+                console.error(error);
+                Swal.fire({
+                    icon: 'error',
+                    title: '資料載入失敗',
+                    text: '無法讀取 Google 試算表。請確認您的試算表權限已設定為「知道連結的人均可檢視」。'
+                });
+            }
+        }
+
+        /**
+         * 載入範例資料 (當使用者沒有 Excel 檔案時測試用)
+         */
+        function loadSampleData() {
+            originalColumns = ['候選人編號', '姓名', '政見理念', '經歷'];
+            candidatesData = [
+                { _id: 0, _votes: 0, '候選人編號': '1號', '姓名': '王小明', '政見理念': '推動校園全面提供免費 WiFi，並延長圖書館開放時間。', '經歷': '學生會公關長' },
+                { _id: 1, _votes: 0, '候選人編號': '2號', '姓名': '陳美麗', '政見理念': '增加校園接駁車班次，改善學餐衛生與價格問題。', '經歷': '系學會會長' },
+                { _id: 2, _votes: 0, '候選人編號': '3號', '姓名': '林志偉', '政見理念': '定期舉辦企業媒合會，提供更多海內外實習機會。', '經歷': '海外志工團副團長' }
+            ];
+            
+            initVotingSystem();
+            Swal.fire({
+                icon: 'success',
+                title: '已載入範例資料',
+                timer: 1000,
+                showConfirmButton: false
+            });
+        }
+
+        /**
+         * 初始化投票系統介面
+         */
+        function initVotingSystem() {
+            document.getElementById('total-candidates-text').innerText = `共載入 ${candidatesData.length} 筆資料`;
+            document.getElementById('nav-actions').classList.remove('hidden');
+            
+            selectedCandidates.clear(); // 初始化/清空選擇
+            updateSelectionUI(); // 更新底部計數介面
+
+            renderCandidates();
+            renderResults();
+            switchView('voting-view');
+        }
+
+        /**
+         * 畫面切換控制
+         */
+        function switchView(viewId) {
+            document.getElementById('upload-view').classList.add('hidden');
+            document.getElementById('voting-view').classList.add('hidden');
+            document.getElementById('results-view').classList.add('hidden');
+            
+            document.getElementById(viewId).classList.remove('hidden');
+            
+            if(viewId === 'results-view') {
+                renderResults(); // 切換到結果頁時重新渲染以確保最新
+            }
+        }
+
+        /**
+         * 渲染候選人列表卡片
+         */
+        function renderCandidates() {
+            const grid = document.getElementById('candidates-grid');
+            grid.innerHTML = '';
+
+            candidatesData.forEach(candidate => {
+                // 嘗試找出最適合當作卡片標題的欄位
+                let titleCol = originalColumns.find(col => col.includes('名') || col.includes('稱')) || originalColumns[0];
+                let subtitleCol = originalColumns.find(col => col.includes('編號') || col.includes('ID'));
+                
+                let titleText = candidate[titleCol] || '未知';
+                let subtitleText = subtitleCol ? `${subtitleCol}: ${candidate[subtitleCol]}` : '';
+
+                // 動態產生其他詳細資料的 HTML
+                let detailsHTML = '';
+                originalColumns.forEach(col => {
+                    if (col !== titleCol && col !== subtitleCol) {
+                        detailsHTML += `
+                            <div class="mb-2">
+                                <span class="text-xs font-bold text-primary bg-indigo-50 px-2 py-1 rounded">${col}</span>
+                                <p class="text-sm text-gray-700 mt-1 pl-1 line-clamp-3">${candidate[col]}</p>
+                            </div>
+                        `;
+                    }
+                });
+
+                // 判斷是否已被選擇，並設定對應樣式
+                const isSelected = selectedCandidates.has(candidate._id);
+                const borderClass = isSelected ? 'border-primary bg-indigo-50/30' : 'border-transparent';
+                const btnClass = isSelected ? 'bg-primary hover:bg-indigo-700 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700';
+                const btnIcon = isSelected ? '<i class="fa-solid fa-check-square"></i> 已選擇' : '<i class="fa-regular fa-square"></i> 選擇';
+
+                // 組合卡片 HTML (整張卡片點擊皆可切換選擇)
+                const cardHTML = `
+                    <div id="candidate-card-${candidate._id}" class="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden flex flex-col border-2 ${borderClass}">
+                        <div class="p-6 flex-grow cursor-pointer" onclick="toggleSelection(${candidate._id})">
+                            <div class="flex items-center gap-4 mb-4 pb-4 border-b border-gray-100">
+                                <div class="w-14 h-14 bg-gradient-to-br from-primary to-indigo-400 rounded-full flex items-center justify-center text-white text-xl font-bold shadow-sm">
+                                    ${titleText.toString().charAt(0)}
+                                </div>
+                                <div>
+                                    <h3 class="text-xl font-bold text-gray-800">${titleText}</h3>
+                                    ${subtitleText ? `<p class="text-sm text-gray-500">${subtitleText}</p>` : ''}
+                                </div>
+                            </div>
+                            <div class="space-y-3">
+                                ${detailsHTML}
+                            </div>
+                        </div>
+                        <div class="p-4 bg-gray-50 border-t border-gray-100">
+                            <button id="btn-select-${candidate._id}" onclick="toggleSelection(${candidate._id})" class="w-full py-3 ${btnClass} font-bold rounded-lg transition-colors shadow-sm flex justify-center items-center gap-2">
+                                ${btnIcon}
+                            </button>
+                        </div>
+                    </div>
+                `;
+                grid.innerHTML += cardHTML;
+            });
+        }
+
+        /**
+         * 切換候選人選擇狀態
+         */
+        function toggleSelection(id) {
+            if (selectedCandidates.has(id)) {
+                // 取消選擇
+                selectedCandidates.delete(id);
+                updateCardStyling(id, false);
+            } else {
+                // 嘗試選擇，並檢查是否超過 5 位
+                if (selectedCandidates.size >= 5) {
+                    Swal.fire({
+                        icon: 'warning',
+                        title: '已達上限',
+                        text: '每人最多只能選擇 5 位候選人喔！'
+                    });
+                    return;
+                }
+                selectedCandidates.add(id);
+                updateCardStyling(id, true);
+            }
+            updateSelectionUI();
+        }
+
+        /**
+         * 更新單一卡片的視覺狀態 (避免重新渲染整個網頁)
+         */
+        function updateCardStyling(id, isSelected) {
+            const card = document.getElementById(`candidate-card-${id}`);
+            const btn = document.getElementById(`btn-select-${id}`);
+            if (!card || !btn) return;
+
+            if (isSelected) {
+                card.classList.remove('border-transparent');
+                card.classList.add('border-primary', 'bg-indigo-50/30');
+                btn.classList.remove('bg-gray-200', 'hover:bg-gray-300', 'text-gray-700');
+                btn.classList.add('bg-primary', 'hover:bg-indigo-700', 'text-white');
+                btn.innerHTML = '<i class="fa-solid fa-check-square"></i> 已選擇';
+            } else {
+                card.classList.add('border-transparent');
+                card.classList.remove('border-primary', 'bg-indigo-50/30');
+                btn.classList.add('bg-gray-200', 'hover:bg-gray-300', 'text-gray-700');
+                btn.classList.remove('bg-primary', 'hover:bg-indigo-700', 'text-white');
+                btn.innerHTML = '<i class="fa-regular fa-square"></i> 選擇';
+            }
+        }
+
+        /**
+         * 更新底部選擇計數介面
+         */
+        function updateSelectionUI() {
+            const countSpan = document.getElementById('selected-count');
+            if (countSpan) {
+                countSpan.innerText = selectedCandidates.size;
+            }
+        }
+
+        /**
+         * 送出選票
+         */
+        function submitVotes() {
+            const voterId = document.getElementById('voter-id').value.trim();
+            const voterName = document.getElementById('voter-name').value.trim();
+
+            if (!voterId || !voterName) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: '資料不完整',
+                    text: '請務必輸入您的「投票編號」與「姓名」才能進行投票！'
+                });
+                return;
+            }
+
+            if (votedIds.has(voterId)) {
+                Swal.fire({
+                    icon: 'error',
+                    title: '重複投票',
+                    text: `投票編號「${voterId}」已經投過票了，無法再次送出！`
+                });
+                return;
+            }
+
+            if (selectedCandidates.size === 0) {
+                Swal.fire({
+                    icon: 'error',
+                    title: '尚未選擇',
+                    text: '請至少選擇 1 位候選人才能送出選票！'
+                });
+                return;
+            }
+
+            Swal.fire({
+                title: '確認送出選票?',
+                text: `您總共選擇了 ${selectedCandidates.size} 位候選人。送出後將無法修改。`,
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#4F46E5',
+                cancelButtonColor: '#d33',
+                confirmButtonText: '確定送出',
+                cancelButtonText: '返回修改'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    // 記錄該投票編號已投票，並存入 localStorage 防重新整理
+                    votedIds.add(voterId);
+                    localStorage.setItem('votedIds', JSON.stringify([...votedIds]));
+
+                    // 將選中的候選人票數加 1
+                    selectedCandidates.forEach(id => {
+                        const index = candidatesData.findIndex(c => c._id === id);
+                        if (index !== -1) {
+                            candidatesData[index]._votes += 1;
+                            totalVotes += 1; // 更新總得票數
+                        }
+                    });
+                    
+                    Swal.fire({
+                        icon: 'success',
+                        title: '投票成功！',
+                        text: '您的選票已成功送出！',
+                        timer: 1500,
+                        showConfirmButton: false
+                    });
+                    
+                    document.getElementById('voter-id').value = '';
+                    document.getElementById('voter-name').value = '';
+                    
+                    // 清空選擇與重置介面
+                    selectedCandidates.clear();
+                    updateSelectionUI();
+                    renderCandidates(); 
+                    
+                    // 自動切換到查看結果頁面
+                    switchView('results-view');
+                }
+            });
+        }
+
+        /**
+         * 渲染投票結果圖表 (進度條)
+         */
+        function renderResults() {
+            const container = document.getElementById('results-container');
+            document.getElementById('total-votes-count').innerText = totalVotes;
+            container.innerHTML = '';
+
+            // 依照票數由高到低排序克隆的陣列
+            const sortedData = [...candidatesData].sort((a, b) => b._votes - a._votes);
+            
+            // 找出最高票數以計算相對寬度
+            const maxVotes = sortedData.length > 0 && sortedData[0]._votes > 0 ? sortedData[0]._votes : 1;
+
+            sortedData.forEach((candidate, index) => {
+                let titleCol = originalColumns.find(col => col.includes('名')) || originalColumns[0];
+                let name = candidate[titleCol] || '未知';
+                
+                // 計算百分比
+                let percentage = totalVotes === 0 ? 0 : Math.round((candidate._votes / totalVotes) * 100);
+                // 計算進度條寬度 (相對於最高票)
+                let barWidth = (candidate._votes / maxVotes) * 100;
+                if(totalVotes === 0) barWidth = 0;
+
+                // 第一名給予特殊顏色 (金牌)
+                const isFirst = index === 0 && candidate._votes > 0;
+                const barColor = isFirst ? 'bg-yellow-400' : 'bg-primary';
+                const medalHTML = isFirst ? '<i class="fa-solid fa-medal text-yellow-500 ml-2"></i>' : '';
+
+                const rowHTML = `
+                    <div class="relative">
+                        <div class="flex justify-between items-end mb-1">
+                            <span class="text-base font-bold text-gray-700">${name} ${medalHTML}</span>
+                            <span class="text-sm font-medium text-gray-600">${candidate._votes} 票 (${percentage}%)</span>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-4 shadow-inner">
+                            <div class="${barColor} h-4 rounded-full transition-all duration-1000 ease-out flex items-center justify-end px-2" style="width: ${barWidth}%">
+                            </div>
+                        </div>
+                    </div>
+                `;
+                container.innerHTML += rowHTML;
+            });
+        }
+
+        /**
+         * 匯出帶有得票數的 Excel 報表
+         */
+        function exportResults() {
+            if (candidatesData.length === 0) {
+                Swal.fire('錯誤', '目前沒有資料可供匯出', 'error');
+                return;
+            }
+
+            // 準備匯出資料：移除內部 _id，將 _votes 改名為易讀名稱
+            const exportData = candidatesData.map(item => {
+                const row = {};
+                // 將票數放在第一欄或最後一欄，這裡放第一欄
+                row['最終得票數'] = item._votes;
+                
+                // 複製原始欄位
+                originalColumns.forEach(col => {
+                    row[col] = item[col];
+                });
+                return row;
+            });
+
+            // 使用 SheetJS 產生 Excel 檔案
+            const worksheet = XLSX.utils.json_to_sheet(exportData);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "投票結果");
+            
+            // 觸發下載
+            XLSX.writeFile(workbook, "投票結果報表.xlsx");
+            
+            Swal.fire({
+                icon: 'success',
+                title: '匯出成功',
+                text: '已下載投票結果報表.xlsx',
+                timer: 2000,
+                showConfirmButton: false
+            });
+        }
+    </script>
+</body>
+</html>
