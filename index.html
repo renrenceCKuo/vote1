@@ -47,7 +47,7 @@
             <div class="flex justify-between h-16 items-center">
                 <div class="flex items-center gap-3">
                     <i class="fa-solid fa-check-to-slot text-2xl"></i>
-                    <span class="font-bold text-xl tracking-wider">中正國中線上投票系統(copyright by C.Kuo)</span>
+                    <span class="font-bold text-xl tracking-wider">115學年度家長會 家長委員票線上投票系統</span>
                 </div>
                 <div id="nav-actions" class="hidden flex gap-2">
                     <button onclick="switchView('voting-view')" class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white hover:text-primary transition">
@@ -110,7 +110,7 @@
                     <p class="text-gray-500 mt-1" id="total-candidates-text">共載入 0 位候選人</p>
                 </div>
                 <div class="text-sm text-gray-500 bg-white px-4 py-2 rounded-full shadow-sm">
-                    每人限投 1 至 5 票
+                    每人限投 1 至 8 票
                 </div>
             </div>
             
@@ -122,7 +122,7 @@
             <div class="fixed bottom-0 left-0 w-full bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] p-4 z-40">
                 <div class="max-w-7xl mx-auto px-4 flex justify-between items-center">
                     <div class="text-gray-700 font-medium">
-                        已選擇：<span id="selected-count" class="text-primary font-bold text-xl">0</span> / 5
+                        已選擇：<span id="selected-count" class="text-primary font-bold text-xl">0</span> / 8
                     </div>
                     <button onclick="submitVotes()" class="bg-primary hover:bg-indigo-700 text-white font-bold py-2 px-8 rounded-lg shadow-md transition-colors text-lg flex items-center gap-2">
                         <i class="fa-solid fa-paper-plane"></i> 確認送出選票
@@ -150,6 +150,11 @@
         </section>
 
     </main>
+
+    <!-- 頁面最下方版本宣告 -->
+    <footer class="text-center py-6 text-gray-500 text-sm border-t border-gray-200 mt-12 pb-24">
+        C.Kuo Ver2.1
+    </footer>
 
     <script>
         // 全域狀態變數
@@ -293,17 +298,32 @@
             grid.innerHTML = '';
 
             candidatesData.forEach(candidate => {
-                // 嘗試找出最適合當作卡片標題的欄位
-                let titleCol = originalColumns.find(col => col.includes('名') || col.includes('稱')) || originalColumns[0];
-                let subtitleCol = originalColumns.find(col => col.includes('編號') || col.includes('ID'));
-                
-                let titleText = candidate[titleCol] || '未知';
-                let subtitleText = subtitleCol ? `${subtitleCol}: ${candidate[subtitleCol]}` : '';
+                // 優先尋找標題與副標題對應欄位
+                let titleCol = originalColumns.find(col => col.includes('序號') || col.includes('號次') || col.includes('編號') || col.toLowerCase().includes('id'));
+                let classCol = originalColumns.find(col => col.includes('班級') || col.includes('班'));
+                let nameCol = originalColumns.find(col => col.includes('家長') || col.includes('姓名') || col.includes('名') || col.includes('稱'));
 
-                // 動態產生其他詳細資料的 HTML
+                // 組合班級副標題
+                let classHTML = '';
+                if (classCol && candidate[classCol]) {
+                    classHTML = `<p class="text-xl font-bold text-primary mt-1 truncate">學生班級：${candidate[classCol]}</p>`;
+                }
+                
+                // 組合姓名 HTML (直接呈現內容，字體放大)
+                let nameHTML = '';
+                if (nameCol && candidate[nameCol]) {
+                    nameHTML = `<h3 class="text-2xl font-bold text-gray-800 truncate">${candidate[nameCol]}</h3>`;
+                }
+                
+                // 若都沒有抓到，給個預設顯示
+                if (!classHTML && !nameHTML && originalColumns.length > 0) {
+                    nameHTML = `<h3 class="text-2xl font-bold text-gray-800 truncate">${candidate[originalColumns[0]]}</h3>`;
+                }
+
+                // 動態產生其他詳細資料的 HTML (排除已顯示為標題與副標題的欄位，並強制排除內容中出現序號)
                 let detailsHTML = '';
                 originalColumns.forEach(col => {
-                    if (col !== titleCol && col !== subtitleCol) {
+                    if (col !== titleCol && col !== classCol && col !== nameCol && !col.includes('序號')) {
                         detailsHTML += `
                             <div class="mb-2">
                                 <span class="text-xs font-bold text-primary bg-indigo-50 px-2 py-1 rounded">${col}</span>
@@ -319,17 +339,21 @@
                 const btnClass = isSelected ? 'bg-primary hover:bg-indigo-700 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700';
                 const btnIcon = isSelected ? '<i class="fa-solid fa-check-square"></i> 已選擇' : '<i class="fa-regular fa-square"></i> 選擇';
 
+                // 圓形標章顯示序號數字
+                let badgeText = titleCol && candidate[titleCol] ? String(candidate[titleCol]).replace(/[^0-9a-zA-Z]/g, '') : `${candidate._id + 1}`;
+                if (!badgeText) badgeText = `${candidate._id + 1}`;
+
                 // 組合卡片 HTML (整張卡片點擊皆可切換選擇)
                 const cardHTML = `
                     <div id="candidate-card-${candidate._id}" class="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden flex flex-col border-2 ${borderClass}">
                         <div class="p-6 flex-grow cursor-pointer" onclick="toggleSelection(${candidate._id})">
                             <div class="flex items-center gap-4 mb-4 pb-4 border-b border-gray-100">
-                                <div class="w-14 h-14 bg-gradient-to-br from-primary to-indigo-400 rounded-full flex items-center justify-center text-white text-xl font-bold shadow-sm">
-                                    ${titleText.toString().charAt(0)}
+                                <div class="w-14 h-14 bg-gradient-to-br from-primary to-indigo-400 rounded-full flex items-center justify-center text-white text-xl font-bold shadow-sm flex-shrink-0">
+                                    ${badgeText}
                                 </div>
-                                <div>
-                                    <h3 class="text-xl font-bold text-gray-800">${titleText}</h3>
-                                    ${subtitleText ? `<p class="text-sm text-gray-500">${subtitleText}</p>` : ''}
+                                <div class="overflow-hidden">
+                                    ${nameHTML}
+                                    ${classHTML}
                                 </div>
                             </div>
                             <div class="space-y-3">
@@ -356,12 +380,12 @@
                 selectedCandidates.delete(id);
                 updateCardStyling(id, false);
             } else {
-                // 嘗試選擇，並檢查是否超過 5 位
-                if (selectedCandidates.size >= 5) {
+                // 嘗試選擇，並檢查是否超過 8 位
+                if (selectedCandidates.size >= 8) {
                     Swal.fire({
                         icon: 'warning',
                         title: '已達上限',
-                        text: '每人最多只能選擇 5 位候選人喔！'
+                        text: '每人最多只能選擇 8 位候選人喔！'
                     });
                     return;
                 }
@@ -499,8 +523,15 @@
             const maxVotes = sortedData.length > 0 && sortedData[0]._votes > 0 ? sortedData[0]._votes : 1;
 
             sortedData.forEach((candidate, index) => {
-                let titleCol = originalColumns.find(col => col.includes('名')) || originalColumns[0];
-                let name = candidate[titleCol] || '未知';
+                let classCol = originalColumns.find(col => col.includes('班級') || col.includes('班'));
+                let nameCol = originalColumns.find(col => col.includes('家長') || col.includes('姓名') || col.includes('名') || col.includes('稱'));
+                
+                // 結果列表同時呈現班級與姓名 (不含序號)
+                let displayNameItems = [];
+                if (classCol && candidate[classCol]) displayNameItems.push(candidate[classCol]);
+                if (nameCol && candidate[nameCol]) displayNameItems.push(candidate[nameCol]);
+                
+                let displayName = displayNameItems.length > 0 ? displayNameItems.join(' ') : (candidate[originalColumns[0]] || `候選人 ${candidate._id + 1}`);
                 
                 // 計算百分比
                 let percentage = totalVotes === 0 ? 0 : Math.round((candidate._votes / totalVotes) * 100);
@@ -516,7 +547,7 @@
                 const rowHTML = `
                     <div class="relative">
                         <div class="flex justify-between items-end mb-1">
-                            <span class="text-base font-bold text-gray-700">${name} ${medalHTML}</span>
+                            <span class="text-base font-bold text-gray-700">${displayName} ${medalHTML}</span>
                             <span class="text-sm font-medium text-gray-600">${candidate._votes} 票 (${percentage}%)</span>
                         </div>
                         <div class="w-full bg-gray-200 rounded-full h-4 shadow-inner">
