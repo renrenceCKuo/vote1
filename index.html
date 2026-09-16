@@ -164,12 +164,34 @@
         import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // 初始化 Firebase 環境
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
-        const auth = getAuth(app);
+        // === 【資料庫設定區塊】 ===
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'github-voting-app';
+        
+        // 若要在 GitHub 啟用「雲端多人即時投票」，請在下方大括號內貼上您的 Firebase Config
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+            // apiKey: "AIzaSy...",
+            // authDomain: "your-project.firebaseapp.com",
+            // projectId: "your-project",
+            // storageBucket: "your-project.appspot.com",
+            // messagingSenderId: "123456789",
+            // appId: "1:123456789:web:abcdefg"
+        };
+
+        let app, db, auth;
+        let isCloudMode = false; // 系統會自動偵測是否啟用雲端資料庫
+
+        // 嘗試初始化資料庫連線
+        try {
+            if (Object.keys(firebaseConfig).length > 0) {
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                isCloudMode = true;
+            }
+        } catch (error) {
+            console.warn("Firebase 設定異常，將切換為本機模式", error);
+        }
+
         let user = null;
 
         // 全域狀態變數
@@ -188,27 +210,29 @@
 
         window.addEventListener('DOMContentLoaded', async () => {
             try {
-                // 登入雲端系統以取得寫入權限
-                if (typeof __initial_auth_token !== 'undefined') {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
-                user = auth.currentUser;
-                
-                // 讀取名單
+                // 1. 無論有沒有資料庫，都強制優先載入 Google 試算表，確保網頁能顯示！
                 await loadFromGoogleSheet();
+
+                // 2. 嘗試登入雲端資料庫 (如果有設定的話)
+                if (isCloudMode) {
+                    if (typeof __initial_auth_token !== 'undefined') {
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+                    user = auth.currentUser;
+                    console.log("【雲端多人投票模式】已連線！");
+                } else {
+                    console.log("【本機單機測試模式】未設定資料庫，選票僅存於此台電腦瀏覽器。");
+                }
             } catch (error) {
-                console.error("系統初始化失敗", error);
-                Swal.fire('連線錯誤', '無法連線至雲端伺服器，請重新整理網頁', 'error');
+                console.error("系統初始化發生錯誤", error);
             }
         });
 
         async function loadFromGoogleSheet() {
-            // 【終極解決方案】解決 GitHub Pages 的跨網域(CORS)阻擋問題：
-            // 請將您從「檔案 > 共用 > 發佈到網路 (選擇 CSV)」取得的長網址，貼在下方的引號中！
-            // (如果您還沒發佈，下方的是原始的備用網址，但在 GitHub 上可能會被阻擋)
-            const url = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vShNdU1uFaEp6F5WYRQM5Hh-EjglIvdBQwjj6KaQ23h73NPg60ixK0gCSC08ZS19w/pub?output=csv';
+            // 已套用您的 Google 試算表 ID，並使用 export 確保資料完整抓取
+            const url = 'https://docs.google.com/spreadsheets/d/1awdlq60JBuo9A2abybu030Vum59zNT7s/export?format=csv';
             
             Swal.fire({
                 title: '正在載入最新名單...',
@@ -221,7 +245,6 @@
                 if (!response.ok) throw new Error('網路回應錯誤');
                 const csvText = await response.text();
                 
-                // 檢查是否因為權限未公開，被 Google 重新導向到了登入畫面 (收到 HTML 而非 CSV)
                 if (csvText.trim().toLowerCase().startsWith('<!doctype html>') || csvText.includes('accounts.google.com')) {
                     throw new Error('Sheet_Is_Private');
                 }
@@ -238,8 +261,8 @@
                     ...row      
                 }));
 
-                // 啟動雲端票數即時監聽
-                listenToVotes();
+                // 啟動雲端票數即時監聽 (僅雲端模式啟用)
+                if (isCloudMode) listenToVotes();
 
                 Swal.fire({
                     icon: 'success',
@@ -256,13 +279,7 @@
                     Swal.fire({ 
                         icon: 'error', 
                         title: '試算表權限未公開', 
-                        html: '系統被 Google 阻擋讀取名單。<br><br><b>解決方法：</b><br>請至該 Google 試算表，點擊右上角「共用」，將一般存取權限改為<b>「知道連結的人均可檢視」</b>，設定後無須登入即可自動載入！' 
-                    });
-                } else if (error.message === '網路回應錯誤' || error.name === 'TypeError') {
-                    Swal.fire({ 
-                        icon: 'error', 
-                        title: '遭瀏覽器安全機制阻擋', 
-                        html: '上傳至 GitHub 後，Google 試算表需透過<b>「發佈到網路」</b>才能順利讀取資料。<br><br>請至試算表點選「檔案 > 共用 > 發佈到網路」，選擇 CSV 格式後複製網址，並貼入程式碼中的 url 變數。' 
+                        html: '請至試算表將共用權限改為<b>「知道連結的人均可檢視」</b>' 
                     });
                 } else {
                     Swal.fire({ icon: 'error', title: '載入失敗', text: '請確認試算表網址正確且權限已公開' });
@@ -271,11 +288,10 @@
         }
 
         function listenToVotes() {
-            if (!user) return;
+            if (!isCloudMode || !user) return;
             const votesRef = collection(db, 'artifacts', appId, 'public', 'data', 'votes');
             
             onSnapshot(votesRef, (snapshot) => {
-                // 將雲端最新票數覆寫回本地陣列
                 snapshot.forEach(doc => {
                     const cid = parseInt(doc.id);
                     const count = doc.data().count || 0;
@@ -283,10 +299,7 @@
                     if(idx !== -1) candidatesData[idx]._votes = count;
                 });
                 
-                // 重新計算總票數
                 totalVotes = candidatesData.reduce((sum, c) => sum + c._votes, 0);
-                
-                // 若正在瀏覽結果頁面，則即時更新進度條
                 if (!document.getElementById('results-view').classList.contains('hidden')) {
                     renderResults();
                 }
@@ -296,10 +309,10 @@
         }
 
         function loadSampleData() {
-            originalColumns = ['候選人編號', '姓名', '政見理念', '經歷'];
+            originalColumns = ['班級', '家長姓名', '政見理念', '經歷'];
             candidatesData = [
-                { _id: 0, _votes: 0, '候選人編號': '1號', '姓名': '王小明', '政見理念': '推動校園...', '經歷': '會長' },
-                { _id: 1, _votes: 0, '候選人編號': '2號', '姓名': '陳美麗', '政見理念': '增加接駁車...', '經歷': '副會長' }
+                { _id: 0, _votes: 0, '班級': '七年一班', '家長姓名': '王小明', '政見理念': '推動...', '經歷': '會長' },
+                { _id: 1, _votes: 0, '班級': '八年二班', '家長姓名': '陳美麗', '政見理念': '增加...', '經歷': '副會長' }
             ];
             initVotingSystem();
             Swal.fire({ icon: 'success', title: '已載入範例', timer: 1000, showConfirmButton: false });
@@ -328,20 +341,19 @@
             grid.innerHTML = '';
 
             candidatesData.forEach(candidate => {
-                let titleCol = originalColumns.find(col => col.includes('序號') || col.includes('號次') || col.includes('編號') || col.toLowerCase().includes('id'));
                 let classCol = originalColumns.find(col => col.includes('班級') || col.includes('班'));
                 let nameCol = originalColumns.find(col => col.includes('家長') || col.includes('姓名') || col.includes('名') || col.includes('稱'));
 
-                let classHTML = classCol && candidate[classCol] ? `<p class="text-xl font-bold text-primary mt-1 truncate">學生班級：${candidate[classCol]}</p>` : '';
+                let classHTML = classCol && candidate[classCol] ? `<p class="text-lg font-bold text-primary mt-1 truncate">學生班級：${candidate[classCol]}</p>` : '';
                 let nameHTML = nameCol && candidate[nameCol] ? `<h3 class="text-2xl font-bold text-gray-800 truncate">${candidate[nameCol]}</h3>` : '';
-                if (!classHTML && !nameHTML && originalColumns.length > 0) nameHTML = `<h3 class="text-2xl font-bold text-gray-800 truncate">${candidate[originalColumns[0]]}</h3>`;
+                if (!nameHTML && originalColumns.length > 0) nameHTML = `<h3 class="text-2xl font-bold text-gray-800 truncate">${candidate[originalColumns[0]]}</h3>`;
 
                 let detailsHTML = '';
                 originalColumns.forEach(col => {
-                    if (col !== titleCol && col !== classCol && col !== nameCol && !col.includes('序號') && !col.includes('票數') && !col.includes('得票')) {
+                    if (col !== classCol && col !== nameCol && !col.includes('序號') && !col.includes('編號') && !col.includes('號次') && !col.includes('票數') && !col.includes('得票')) {
                         detailsHTML += `
                             <div class="mb-2">
-                                <span class="text-xs font-bold text-primary bg-indigo-50 px-2 py-1 rounded">${col}</span>
+                                <span class="text-xs font-bold text-primary bg-rose-50 px-2 py-1 rounded">${col}</span>
                                 <p class="text-sm text-gray-700 mt-1 pl-1 line-clamp-3">${candidate[col]}</p>
                             </div>
                         `;
@@ -349,19 +361,16 @@
                 });
 
                 const isSelected = selectedCandidates.has(candidate._id);
-                const borderClass = isSelected ? 'border-primary bg-indigo-50/30' : 'border-transparent';
-                const btnClass = isSelected ? 'bg-primary hover:bg-indigo-700 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700';
+                const borderClass = isSelected ? 'border-primary bg-rose-50/50' : 'border-transparent';
+                const btnClass = isSelected ? 'bg-primary hover:bg-rose-700 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700';
                 const btnIcon = isSelected ? '<i class="fa-solid fa-check-square"></i> 已選擇' : '<i class="fa-regular fa-square"></i> 選擇';
-
-                let badgeText = titleCol && candidate[titleCol] ? String(candidate[titleCol]).replace(/[^0-9a-zA-Z]/g, '') : `${candidate._id + 1}`;
-                if (!badgeText) badgeText = `${candidate._id + 1}`;
 
                 const cardHTML = `
                     <div id="candidate-card-${candidate._id}" class="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden flex flex-col border-2 ${borderClass}">
                         <div class="p-6 flex-grow cursor-pointer" onclick="toggleSelection(${candidate._id})">
                             <div class="flex items-center gap-4 mb-4 pb-4 border-b border-gray-100">
-                                <div class="w-14 h-14 bg-gradient-to-br from-primary to-indigo-400 rounded-full flex items-center justify-center text-white text-xl font-bold shadow-sm flex-shrink-0">
-                                    ${badgeText}
+                                <div class="w-14 h-14 bg-gradient-to-br from-primary to-rose-400 rounded-full flex items-center justify-center text-white text-2xl shadow-sm flex-shrink-0">
+                                    <i class="fa-solid fa-user-tie"></i>
                                 </div>
                                 <div class="overflow-hidden">
                                     ${nameHTML}
@@ -405,12 +414,12 @@
 
             if (isSelected) {
                 card.classList.replace('border-transparent', 'border-primary');
-                card.classList.add('bg-indigo-50/30');
-                btn.className = `w-full py-3 bg-primary hover:bg-indigo-700 text-white font-bold rounded-lg transition-colors shadow-sm flex justify-center items-center gap-2`;
+                card.classList.add('bg-rose-50/50');
+                btn.className = `w-full py-3 bg-primary hover:bg-rose-700 text-white font-bold rounded-lg transition-colors shadow-sm flex justify-center items-center gap-2`;
                 btn.innerHTML = '<i class="fa-solid fa-check-square"></i> 已選擇';
             } else {
                 card.classList.replace('border-primary', 'border-transparent');
-                card.classList.remove('bg-indigo-50/30');
+                card.classList.remove('bg-rose-50/50');
                 btn.className = `w-full py-3 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold rounded-lg transition-colors shadow-sm flex justify-center items-center gap-2`;
                 btn.innerHTML = '<i class="fa-regular fa-square"></i> 選擇';
             }
@@ -433,18 +442,24 @@
                 Swal.fire({ icon: 'error', title: '尚未選擇', text: '請至少選擇 1 位候選人才能送出選票！' });
                 return;
             }
-            if (!user) {
+            if (isCloudMode && !user) {
                 Swal.fire({ icon: 'error', title: '系統錯誤', text: '未成功連線至雲端，請重新整理網頁。' });
                 return;
             }
 
-            // 檢查雲端防重複投票
-            const voterRef = doc(db, 'artifacts', appId, 'public', 'data', 'votedUsers', voterId);
-            const voterSnap = await getDoc(voterRef);
-            
-            if (voterSnap.exists()) {
-                Swal.fire({ icon: 'error', title: '重複投票', text: `系統紀錄顯示投票編號「${voterId}」已經投過票了！` });
-                return;
+            // 防重複投票檢查 (區分雲端與單機)
+            if (isCloudMode) {
+                const voterRef = doc(db, 'artifacts', appId, 'public', 'data', 'votedUsers', voterId);
+                const voterSnap = await getDoc(voterRef);
+                if (voterSnap.exists()) {
+                    Swal.fire({ icon: 'error', title: '重複投票', text: `系統紀錄顯示投票編號「${voterId}」已經投過票了！` });
+                    return;
+                }
+            } else {
+                if (localStorage.getItem(`voted_${voterId}`)) {
+                    Swal.fire({ icon: 'error', title: '重複投票', text: `系統紀錄顯示投票編號「${voterId}」已經投過票了！\n(本機測試模式)` });
+                    return;
+                }
             }
 
             Swal.fire({
@@ -452,31 +467,37 @@
                 text: `您總共選擇了 ${selectedCandidates.size} 位候選人。送出後將無法修改。`,
                 icon: 'question',
                 showCancelButton: true,
-                confirmButtonColor: '#4F46E5',
+                confirmButtonColor: '#E11D48',
                 cancelButtonColor: '#d33',
                 confirmButtonText: '確定送出',
                 cancelButtonText: '返回修改'
             }).then(async (result) => {
                 if (result.isConfirmed) {
-                    Swal.fire({ title: '正在將選票安全寫入雲端...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+                    Swal.fire({ title: '正在處理選票...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
 
                     try {
-                        // 1. 寫入該投票人的紀錄以防重複
-                        await setDoc(voterRef, { name: voterName, timestamp: new Date().toISOString() });
+                        if (isCloudMode) {
+                            // --- 雲端寫入模式 ---
+                            const voterRef = doc(db, 'artifacts', appId, 'public', 'data', 'votedUsers', voterId);
+                            await setDoc(voterRef, { name: voterName, timestamp: new Date().toISOString() });
 
-                        // 2. 更新雲端票數
-                        for (let cid of selectedCandidates) {
-                            const voteRef = doc(db, 'artifacts', appId, 'public', 'data', 'votes', String(cid));
-                            const voteSnap = await getDoc(voteRef);
-                            let currentVotes = 0;
-                            if (voteSnap.exists()) {
-                                currentVotes = voteSnap.data().count || 0;
+                            for (let cid of selectedCandidates) {
+                                const voteRef = doc(db, 'artifacts', appId, 'public', 'data', 'votes', String(cid));
+                                const voteSnap = await getDoc(voteRef);
+                                let currentVotes = voteSnap.exists() ? (voteSnap.data().count || 0) : 0;
+                                await setDoc(voteRef, { count: currentVotes + 1 }, { merge: true });
                             }
-                            // 寫入加一後的票數
-                            await setDoc(voteRef, { count: currentVotes + 1 }, { merge: true });
+                        } else {
+                            // --- 本機單機模式 ---
+                            localStorage.setItem(`voted_${voterId}`, new Date().toISOString());
+                            for (let cid of selectedCandidates) {
+                                const idx = candidatesData.findIndex(c => c._id === cid);
+                                if (idx !== -1) candidatesData[idx]._votes += 1;
+                            }
+                            totalVotes += selectedCandidates.size;
                         }
                         
-                        Swal.fire({ icon: 'success', title: '投票成功！', text: '您的選票已成功寫入系統！', timer: 2000, showConfirmButton: false });
+                        Swal.fire({ icon: 'success', title: '投票成功！', text: '您的選票已成功紀錄！', timer: 2000, showConfirmButton: false });
                         
                         document.getElementById('voter-id').value = '';
                         document.getElementById('voter-name').value = '';
@@ -486,7 +507,7 @@
                         switchView('results-view');
 
                     } catch (error) {
-                        console.error("雲端寫入失敗", error);
+                        console.error("寫入失敗", error);
                         Swal.fire({ icon: 'error', title: '寫入失敗', text: '傳送過程中發生錯誤，請稍後再試。' });
                     }
                 }
@@ -541,8 +562,12 @@
 
             const exportData = candidatesData.map(item => {
                 const row = {};
-                row['最終得票數 (雲端統計)'] = item._votes;
-                originalColumns.forEach(col => { row[col] = item[col]; });
+                row['最終得票數 (系統統計)'] = item._votes;
+                originalColumns.forEach(col => { 
+                    if(!col.includes('序號') && !col.includes('票數') && !col.includes('得票')) {
+                        row[col] = item[col]; 
+                    }
+                });
                 return row;
             });
 
