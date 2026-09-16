@@ -205,7 +205,9 @@
         });
 
         async function loadFromGoogleSheet() {
+            // 這裡已經設定為您專屬的 Google 試算表 ID
             const sheetId = '1awdlq60JBuo9A2abybu030Vum59zNT7s';
+            // 系統透過原生匯出 API 準確讀取該網址的所有資料
             const url = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`;
             
             Swal.fire({
@@ -218,6 +220,11 @@
                 const response = await fetch(url);
                 if (!response.ok) throw new Error('網路回應錯誤');
                 const csvText = await response.text();
+                
+                // 檢查是否因為權限未公開，被 Google 重新導向到了登入畫面 (收到 HTML 而非 CSV)
+                if (csvText.trim().toLowerCase().startsWith('<!doctype html>') || csvText.includes('accounts.google.com')) {
+                    throw new Error('Sheet_Is_Private');
+                }
                 
                 const workbook = XLSX.read(csvText, {type: 'string'});
                 const json = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { defval: "" });
@@ -245,7 +252,15 @@
                 initVotingSystem();
             } catch (error) {
                 console.error(error);
-                Swal.fire({ icon: 'error', title: '載入失敗', text: '請確認試算表網址正確且權限已公開' });
+                if (error.message === 'Sheet_Is_Private') {
+                    Swal.fire({ 
+                        icon: 'error', 
+                        title: '試算表權限未公開', 
+                        html: '系統被 Google 阻擋讀取名單。<br><br><b>解決方法：</b><br>請至該 Google 試算表，點擊右上角「共用」，將一般存取權限改為<b>「知道連結的人均可檢視」</b>，設定後無須登入即可自動載入！' 
+                    });
+                } else {
+                    Swal.fire({ icon: 'error', title: '載入失敗', text: '請確認試算表網址正確且權限已公開' });
+                }
             }
         }
 
