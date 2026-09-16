@@ -47,7 +47,7 @@
             <div class="flex justify-between h-16 items-center">
                 <div class="flex items-center gap-3">
                     <i class="fa-solid fa-check-to-slot text-2xl"></i>
-                    <span class="font-bold text-xl tracking-wider">115學年度家長會 家長委員線上投票系統</span>
+                    <span class="font-bold text-xl tracking-wider">115學年度家長會 家長委員票線上投票系統</span>
                 </div>
                 <div id="nav-actions" class="hidden flex gap-2">
                     <button onclick="switchView('voting-view')" class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white hover:text-primary transition">
@@ -177,8 +177,8 @@
         async function loadFromGoogleSheet() {
             // 解析您提供的 Google 試算表 ID
             const sheetId = '1awdlq60JBuo9A2abybu030Vum59zNT7s';
-            // 使用 Google 試算表的 CSV 匯出 API (需確認權限為「知道連結的人均可檢視」)
-            const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv`;
+            // 改用原生的 Google 試算表 CSV 匯出連結，避免 gviz API 自動過濾導致前幾筆資料遺失
+            const url = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`;
             
             // 顯示載入中提示
             Swal.fire({
