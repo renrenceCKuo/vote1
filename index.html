@@ -74,7 +74,7 @@
                         <i class="fa-solid fa-cloud-arrow-down text-4xl text-primary"></i>
                     </div>
                     <h2 class="text-2xl font-bold mb-2">正在連接雲端資料庫</h2>
-                    <p class="text-gray-500 mb-6">系統將自動從 Google 試算表載入候選人名單，請稍候...</p>
+                    <p class="text-gray-500 mb-6">系統將自動從指定的 Google 試算表載入名單，請稍候...<br><span class="text-xs text-gray-400">(來源：1awdlq60JBuo9A...)</span></p>
                     
                     <button onclick="loadFromGoogleSheet()" class="bg-primary hover:bg-indigo-700 text-white font-bold py-3 px-8 rounded-xl shadow-md transition-colors text-lg flex items-center justify-center gap-2 mx-auto">
                         <i class="fa-solid fa-sync"></i> 手動重新載入
@@ -108,8 +108,11 @@
                 <div>
                     <h2 class="text-2xl font-bold text-gray-800">請選擇您支持的候選人</h2>
                     <p class="text-gray-500 mt-1" id="total-candidates-text">共載入 0 位候選人</p>
+                    <p class="text-sm font-medium text-primary mt-2 bg-indigo-50 inline-block px-3 py-1 rounded-md">
+                        <i class="fa-solid fa-circle-info mr-1"></i> 名單已由 Google 試算表同步。投票結果將於雲端自動安全加總。
+                    </p>
                 </div>
-                <div class="text-sm text-gray-500 bg-white px-4 py-2 rounded-full shadow-sm">
+                <div class="text-sm text-gray-500 bg-white px-4 py-2 rounded-full shadow-sm border border-gray-200">
                     每人限投 1 至 8 票
                 </div>
             </div>
@@ -153,7 +156,7 @@
 
     <!-- 頁面最下方版本宣告 -->
     <footer class="text-center py-6 text-gray-500 text-sm border-t border-gray-200 mt-12 pb-24">
-        C.Kuo Ver2.3
+        C.Kuo Ver1.1
     </footer>
 
     <script type="module">
