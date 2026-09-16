@@ -153,41 +153,62 @@
 
     <!-- 頁面最下方版本宣告 -->
     <footer class="text-center py-6 text-gray-500 text-sm border-t border-gray-200 mt-12 pb-24">
-        C.Kuo Ver2.1
+        C.Kuo Ver1.1
     </footer>
 
-    <script>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // 初始化 Firebase 環境
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        let user = null;
+
         // 全域狀態變數
         let candidatesData = [];
         let totalVotes = 0;
-        let originalColumns = []; // 紀錄原始 Excel 欄位名稱
-        let selectedCandidates = new Set(); // 紀錄目前選擇的候選人 ID
-        let votedIds = new Set(JSON.parse(localStorage.getItem('votedIds') || '[]')); // 紀錄已經投過票的投票編號 (防重新整理)
+        let originalColumns = []; 
+        let selectedCandidates = new Set(); 
 
-        /**
-         * 網頁載入完成後自動讀取 Google Sheets
-         */
-        window.addEventListener('DOMContentLoaded', () => {
-            loadFromGoogleSheet();
+        // 綁定函式至 window 以供 HTML onclick 呼叫
+        window.loadFromGoogleSheet = loadFromGoogleSheet;
+        window.loadSampleData = loadSampleData;
+        window.switchView = switchView;
+        window.toggleSelection = toggleSelection;
+        window.submitVotes = submitVotes;
+        window.exportResults = exportResults;
+
+        window.addEventListener('DOMContentLoaded', async () => {
+            try {
+                // 登入雲端系統以取得寫入權限
+                if (typeof __initial_auth_token !== 'undefined') {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+                user = auth.currentUser;
+                
+                // 讀取名單
+                await loadFromGoogleSheet();
+            } catch (error) {
+                console.error("系統初始化失敗", error);
+                Swal.fire('連線錯誤', '無法連線至雲端伺服器，請重新整理網頁', 'error');
+            }
         });
 
-        /**
-         * 處理從 Google Sheets 載入資料
-         */
         async function loadFromGoogleSheet() {
-            // 解析您提供的 Google 試算表 ID
             const sheetId = '1awdlq60JBuo9A2abybu030Vum59zNT7s';
-            // 改用原生的 Google 試算表 CSV 匯出連結，避免 gviz API 自動過濾導致前幾筆資料遺失
             const url = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`;
             
-            // 顯示載入中提示
             Swal.fire({
-                title: '正在下載雲端名單...',
-                text: '請稍候',
+                title: '正在載入最新名單...',
                 allowOutsideClick: false,
-                didOpen: () => {
-                    Swal.showLoading();
-                }
+                didOpen: () => Swal.showLoading()
             });
 
             try {
@@ -195,29 +216,20 @@
                 if (!response.ok) throw new Error('網路回應錯誤');
                 const csvText = await response.text();
                 
-                // 使用 SheetJS 讀取 CSV 字串
                 const workbook = XLSX.read(csvText, {type: 'string'});
-                const firstSheetName = workbook.SheetNames[0];
-                const worksheet = workbook.Sheets[firstSheetName];
+                const json = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { defval: "" });
                 
-                // 將工作表轉換為 JSON 陣列
-                const json = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
-                
-                if (json.length === 0) {
-                    throw new Error("表格似乎是空的。");
-                }
-
-                // 記錄所有欄位名稱，以便動態顯示
+                if (json.length === 0) throw new Error("表格為空");
                 originalColumns = Object.keys(json[0]);
 
-                // 初始化候選人資料 (加上內部 ID 和初始票數 0)
-                candidatesData = json.map((row, index) => {
-                    return {
-                        _id: index, // 系統內部 ID
-                        _votes: 0,  // 票數計數器
-                        ...row      // 保留所有原始資料
-                    };
-                });
+                candidatesData = json.map((row, index) => ({
+                    _id: index, 
+                    _votes: 0,  
+                    ...row      
+                }));
+
+                // 啟動雲端票數即時監聽
+                listenToVotes();
 
                 Swal.fire({
                     icon: 'success',
@@ -227,103 +239,82 @@
                     showConfirmButton: false
                 });
 
-                // 更新介面
                 initVotingSystem();
-
             } catch (error) {
                 console.error(error);
-                Swal.fire({
-                    icon: 'error',
-                    title: '資料載入失敗',
-                    text: '無法讀取 Google 試算表。請確認您的試算表權限已設定為「知道連結的人均可檢視」。'
-                });
+                Swal.fire({ icon: 'error', title: '載入失敗', text: '請確認試算表網址正確且權限已公開' });
             }
         }
 
-        /**
-         * 載入範例資料 (當使用者沒有 Excel 檔案時測試用)
-         */
-        function loadSampleData() {
-            originalColumns = ['候選人編號', '姓名', '政見理念', '經歷'];
-            candidatesData = [
-                { _id: 0, _votes: 0, '候選人編號': '1號', '姓名': '王小明', '政見理念': '推動校園全面提供免費 WiFi，並延長圖書館開放時間。', '經歷': '學生會公關長' },
-                { _id: 1, _votes: 0, '候選人編號': '2號', '姓名': '陳美麗', '政見理念': '增加校園接駁車班次，改善學餐衛生與價格問題。', '經歷': '系學會會長' },
-                { _id: 2, _votes: 0, '候選人編號': '3號', '姓名': '林志偉', '政見理念': '定期舉辦企業媒合會，提供更多海內外實習機會。', '經歷': '海外志工團副團長' }
-            ];
+        function listenToVotes() {
+            if (!user) return;
+            const votesRef = collection(db, 'artifacts', appId, 'public', 'data', 'votes');
             
-            initVotingSystem();
-            Swal.fire({
-                icon: 'success',
-                title: '已載入範例資料',
-                timer: 1000,
-                showConfirmButton: false
+            onSnapshot(votesRef, (snapshot) => {
+                // 將雲端最新票數覆寫回本地陣列
+                snapshot.forEach(doc => {
+                    const cid = parseInt(doc.id);
+                    const count = doc.data().count || 0;
+                    const idx = candidatesData.findIndex(c => c._id === cid);
+                    if(idx !== -1) candidatesData[idx]._votes = count;
+                });
+                
+                // 重新計算總票數
+                totalVotes = candidatesData.reduce((sum, c) => sum + c._votes, 0);
+                
+                // 若正在瀏覽結果頁面，則即時更新進度條
+                if (!document.getElementById('results-view').classList.contains('hidden')) {
+                    renderResults();
+                }
+            }, (error) => {
+                console.error("即時更新票數失敗", error);
             });
         }
 
-        /**
-         * 初始化投票系統介面
-         */
+        function loadSampleData() {
+            originalColumns = ['候選人編號', '姓名', '政見理念', '經歷'];
+            candidatesData = [
+                { _id: 0, _votes: 0, '候選人編號': '1號', '姓名': '王小明', '政見理念': '推動校園...', '經歷': '會長' },
+                { _id: 1, _votes: 0, '候選人編號': '2號', '姓名': '陳美麗', '政見理念': '增加接駁車...', '經歷': '副會長' }
+            ];
+            initVotingSystem();
+            Swal.fire({ icon: 'success', title: '已載入範例', timer: 1000, showConfirmButton: false });
+        }
+
         function initVotingSystem() {
             document.getElementById('total-candidates-text').innerText = `共載入 ${candidatesData.length} 筆資料`;
             document.getElementById('nav-actions').classList.remove('hidden');
-            
-            selectedCandidates.clear(); // 初始化/清空選擇
-            updateSelectionUI(); // 更新底部計數介面
-
+            selectedCandidates.clear(); 
+            updateSelectionUI(); 
             renderCandidates();
             renderResults();
             switchView('voting-view');
         }
 
-        /**
-         * 畫面切換控制
-         */
         function switchView(viewId) {
             document.getElementById('upload-view').classList.add('hidden');
             document.getElementById('voting-view').classList.add('hidden');
             document.getElementById('results-view').classList.add('hidden');
-            
             document.getElementById(viewId).classList.remove('hidden');
-            
-            if(viewId === 'results-view') {
-                renderResults(); // 切換到結果頁時重新渲染以確保最新
-            }
+            if(viewId === 'results-view') renderResults(); 
         }
 
-        /**
-         * 渲染候選人列表卡片
-         */
         function renderCandidates() {
             const grid = document.getElementById('candidates-grid');
             grid.innerHTML = '';
 
             candidatesData.forEach(candidate => {
-                // 優先尋找標題與副標題對應欄位
                 let titleCol = originalColumns.find(col => col.includes('序號') || col.includes('號次') || col.includes('編號') || col.toLowerCase().includes('id'));
                 let classCol = originalColumns.find(col => col.includes('班級') || col.includes('班'));
                 let nameCol = originalColumns.find(col => col.includes('家長') || col.includes('姓名') || col.includes('名') || col.includes('稱'));
 
-                // 組合班級副標題
-                let classHTML = '';
-                if (classCol && candidate[classCol]) {
-                    classHTML = `<p class="text-xl font-bold text-primary mt-1 truncate">學生班級：${candidate[classCol]}</p>`;
-                }
-                
-                // 組合姓名 HTML (直接呈現內容，字體放大)
-                let nameHTML = '';
-                if (nameCol && candidate[nameCol]) {
-                    nameHTML = `<h3 class="text-2xl font-bold text-gray-800 truncate">${candidate[nameCol]}</h3>`;
-                }
-                
-                // 若都沒有抓到，給個預設顯示
-                if (!classHTML && !nameHTML && originalColumns.length > 0) {
-                    nameHTML = `<h3 class="text-2xl font-bold text-gray-800 truncate">${candidate[originalColumns[0]]}</h3>`;
-                }
+                let classHTML = classCol && candidate[classCol] ? `<p class="text-xl font-bold text-primary mt-1 truncate">學生班級：${candidate[classCol]}</p>` : '';
+                let nameHTML = nameCol && candidate[nameCol] ? `<h3 class="text-2xl font-bold text-gray-800 truncate">${candidate[nameCol]}</h3>` : '';
+                if (!classHTML && !nameHTML && originalColumns.length > 0) nameHTML = `<h3 class="text-2xl font-bold text-gray-800 truncate">${candidate[originalColumns[0]]}</h3>`;
 
-                // 動態產生其他詳細資料的 HTML (排除已顯示為標題與副標題的欄位，並強制排除內容中出現序號)
                 let detailsHTML = '';
                 originalColumns.forEach(col => {
-                    if (col !== titleCol && col !== classCol && col !== nameCol && !col.includes('序號')) {
+                    if (col !== titleCol && col !== classCol && col !== nameCol && !col.includes('序號') && !col.includes('票數') && !col.includes('得票')) {
                         detailsHTML += `
                             <div class="mb-2">
                                 <span class="text-xs font-bold text-primary bg-indigo-50 px-2 py-1 rounded">${col}</span>
@@ -333,17 +324,14 @@
                     }
                 });
 
-                // 判斷是否已被選擇，並設定對應樣式
                 const isSelected = selectedCandidates.has(candidate._id);
                 const borderClass = isSelected ? 'border-primary bg-indigo-50/30' : 'border-transparent';
                 const btnClass = isSelected ? 'bg-primary hover:bg-indigo-700 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700';
                 const btnIcon = isSelected ? '<i class="fa-solid fa-check-square"></i> 已選擇' : '<i class="fa-regular fa-square"></i> 選擇';
 
-                // 圓形標章顯示序號數字
                 let badgeText = titleCol && candidate[titleCol] ? String(candidate[titleCol]).replace(/[^0-9a-zA-Z]/g, '') : `${candidate._id + 1}`;
                 if (!badgeText) badgeText = `${candidate._id + 1}`;
 
-                // 組合卡片 HTML (整張卡片點擊皆可切換選擇)
                 const cardHTML = `
                     <div id="candidate-card-${candidate._id}" class="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden flex flex-col border-2 ${borderClass}">
                         <div class="p-6 flex-grow cursor-pointer" onclick="toggleSelection(${candidate._id})">
@@ -371,22 +359,13 @@
             });
         }
 
-        /**
-         * 切換候選人選擇狀態
-         */
         function toggleSelection(id) {
             if (selectedCandidates.has(id)) {
-                // 取消選擇
                 selectedCandidates.delete(id);
                 updateCardStyling(id, false);
             } else {
-                // 嘗試選擇，並檢查是否超過 8 位
                 if (selectedCandidates.size >= 8) {
-                    Swal.fire({
-                        icon: 'warning',
-                        title: '已達上限',
-                        text: '每人最多只能選擇 8 位候選人喔！'
-                    });
+                    Swal.fire({ icon: 'warning', title: '已達上限', text: '每人最多只能選擇 8 位候選人喔！' });
                     return;
                 }
                 selectedCandidates.add(id);
@@ -395,70 +374,52 @@
             updateSelectionUI();
         }
 
-        /**
-         * 更新單一卡片的視覺狀態 (避免重新渲染整個網頁)
-         */
         function updateCardStyling(id, isSelected) {
             const card = document.getElementById(`candidate-card-${id}`);
             const btn = document.getElementById(`btn-select-${id}`);
             if (!card || !btn) return;
 
             if (isSelected) {
-                card.classList.remove('border-transparent');
-                card.classList.add('border-primary', 'bg-indigo-50/30');
-                btn.classList.remove('bg-gray-200', 'hover:bg-gray-300', 'text-gray-700');
-                btn.classList.add('bg-primary', 'hover:bg-indigo-700', 'text-white');
+                card.classList.replace('border-transparent', 'border-primary');
+                card.classList.add('bg-indigo-50/30');
+                btn.className = `w-full py-3 bg-primary hover:bg-indigo-700 text-white font-bold rounded-lg transition-colors shadow-sm flex justify-center items-center gap-2`;
                 btn.innerHTML = '<i class="fa-solid fa-check-square"></i> 已選擇';
             } else {
-                card.classList.add('border-transparent');
-                card.classList.remove('border-primary', 'bg-indigo-50/30');
-                btn.classList.add('bg-gray-200', 'hover:bg-gray-300', 'text-gray-700');
-                btn.classList.remove('bg-primary', 'hover:bg-indigo-700', 'text-white');
+                card.classList.replace('border-primary', 'border-transparent');
+                card.classList.remove('bg-indigo-50/30');
+                btn.className = `w-full py-3 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold rounded-lg transition-colors shadow-sm flex justify-center items-center gap-2`;
                 btn.innerHTML = '<i class="fa-regular fa-square"></i> 選擇';
             }
         }
 
-        /**
-         * 更新底部選擇計數介面
-         */
         function updateSelectionUI() {
             const countSpan = document.getElementById('selected-count');
-            if (countSpan) {
-                countSpan.innerText = selectedCandidates.size;
-            }
+            if (countSpan) countSpan.innerText = selectedCandidates.size;
         }
 
-        /**
-         * 送出選票
-         */
-        function submitVotes() {
+        async function submitVotes() {
             const voterId = document.getElementById('voter-id').value.trim();
             const voterName = document.getElementById('voter-name').value.trim();
 
             if (!voterId || !voterName) {
-                Swal.fire({
-                    icon: 'warning',
-                    title: '資料不完整',
-                    text: '請務必輸入您的「投票編號」與「姓名」才能進行投票！'
-                });
+                Swal.fire({ icon: 'warning', title: '資料不完整', text: '請務必輸入您的「投票編號」與「姓名」才能進行投票！' });
                 return;
             }
-
-            if (votedIds.has(voterId)) {
-                Swal.fire({
-                    icon: 'error',
-                    title: '重複投票',
-                    text: `投票編號「${voterId}」已經投過票了，無法再次送出！`
-                });
-                return;
-            }
-
             if (selectedCandidates.size === 0) {
-                Swal.fire({
-                    icon: 'error',
-                    title: '尚未選擇',
-                    text: '請至少選擇 1 位候選人才能送出選票！'
-                });
+                Swal.fire({ icon: 'error', title: '尚未選擇', text: '請至少選擇 1 位候選人才能送出選票！' });
+                return;
+            }
+            if (!user) {
+                Swal.fire({ icon: 'error', title: '系統錯誤', text: '未成功連線至雲端，請重新整理網頁。' });
+                return;
+            }
+
+            // 檢查雲端防重複投票
+            const voterRef = doc(db, 'artifacts', appId, 'public', 'data', 'votedUsers', voterId);
+            const voterSnap = await getDoc(voterRef);
+            
+            if (voterSnap.exists()) {
+                Swal.fire({ icon: 'error', title: '重複投票', text: `系統紀錄顯示投票編號「${voterId}」已經投過票了！` });
                 return;
             }
 
@@ -471,75 +432,63 @@
                 cancelButtonColor: '#d33',
                 confirmButtonText: '確定送出',
                 cancelButtonText: '返回修改'
-            }).then((result) => {
+            }).then(async (result) => {
                 if (result.isConfirmed) {
-                    // 記錄該投票編號已投票，並存入 localStorage 防重新整理
-                    votedIds.add(voterId);
-                    localStorage.setItem('votedIds', JSON.stringify([...votedIds]));
+                    Swal.fire({ title: '正在將選票安全寫入雲端...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
 
-                    // 將選中的候選人票數加 1
-                    selectedCandidates.forEach(id => {
-                        const index = candidatesData.findIndex(c => c._id === id);
-                        if (index !== -1) {
-                            candidatesData[index]._votes += 1;
-                            totalVotes += 1; // 更新總得票數
+                    try {
+                        // 1. 寫入該投票人的紀錄以防重複
+                        await setDoc(voterRef, { name: voterName, timestamp: new Date().toISOString() });
+
+                        // 2. 更新雲端票數
+                        for (let cid of selectedCandidates) {
+                            const voteRef = doc(db, 'artifacts', appId, 'public', 'data', 'votes', String(cid));
+                            const voteSnap = await getDoc(voteRef);
+                            let currentVotes = 0;
+                            if (voteSnap.exists()) {
+                                currentVotes = voteSnap.data().count || 0;
+                            }
+                            // 寫入加一後的票數
+                            await setDoc(voteRef, { count: currentVotes + 1 }, { merge: true });
                         }
-                    });
-                    
-                    Swal.fire({
-                        icon: 'success',
-                        title: '投票成功！',
-                        text: '您的選票已成功送出！',
-                        timer: 1500,
-                        showConfirmButton: false
-                    });
-                    
-                    document.getElementById('voter-id').value = '';
-                    document.getElementById('voter-name').value = '';
-                    
-                    // 清空選擇與重置介面
-                    selectedCandidates.clear();
-                    updateSelectionUI();
-                    renderCandidates(); 
-                    
-                    // 自動切換到查看結果頁面
-                    switchView('results-view');
+                        
+                        Swal.fire({ icon: 'success', title: '投票成功！', text: '您的選票已成功寫入系統！', timer: 2000, showConfirmButton: false });
+                        
+                        document.getElementById('voter-id').value = '';
+                        document.getElementById('voter-name').value = '';
+                        selectedCandidates.clear();
+                        updateSelectionUI();
+                        renderCandidates(); 
+                        switchView('results-view');
+
+                    } catch (error) {
+                        console.error("雲端寫入失敗", error);
+                        Swal.fire({ icon: 'error', title: '寫入失敗', text: '傳送過程中發生錯誤，請稍後再試。' });
+                    }
                 }
             });
         }
 
-        /**
-         * 渲染投票結果圖表 (進度條)
-         */
         function renderResults() {
             const container = document.getElementById('results-container');
             document.getElementById('total-votes-count').innerText = totalVotes;
             container.innerHTML = '';
 
-            // 依照票數由高到低排序克隆的陣列
             const sortedData = [...candidatesData].sort((a, b) => b._votes - a._votes);
-            
-            // 找出最高票數以計算相對寬度
             const maxVotes = sortedData.length > 0 && sortedData[0]._votes > 0 ? sortedData[0]._votes : 1;
 
             sortedData.forEach((candidate, index) => {
                 let classCol = originalColumns.find(col => col.includes('班級') || col.includes('班'));
                 let nameCol = originalColumns.find(col => col.includes('家長') || col.includes('姓名') || col.includes('名') || col.includes('稱'));
                 
-                // 結果列表同時呈現班級與姓名 (不含序號)
                 let displayNameItems = [];
                 if (classCol && candidate[classCol]) displayNameItems.push(candidate[classCol]);
                 if (nameCol && candidate[nameCol]) displayNameItems.push(candidate[nameCol]);
-                
                 let displayName = displayNameItems.length > 0 ? displayNameItems.join(' ') : (candidate[originalColumns[0]] || `候選人 ${candidate._id + 1}`);
                 
-                // 計算百分比
                 let percentage = totalVotes === 0 ? 0 : Math.round((candidate._votes / totalVotes) * 100);
-                // 計算進度條寬度 (相對於最高票)
-                let barWidth = (candidate._votes / maxVotes) * 100;
-                if(totalVotes === 0) barWidth = 0;
+                let barWidth = totalVotes === 0 ? 0 : (candidate._votes / maxVotes) * 100;
 
-                // 第一名給予特殊顏色 (金牌)
                 const isFirst = index === 0 && candidate._votes > 0;
                 const barColor = isFirst ? 'bg-yellow-400' : 'bg-primary';
                 const medalHTML = isFirst ? '<i class="fa-solid fa-medal text-yellow-500 ml-2"></i>' : '';
@@ -560,43 +509,25 @@
             });
         }
 
-        /**
-         * 匯出帶有得票數的 Excel 報表
-         */
         function exportResults() {
             if (candidatesData.length === 0) {
                 Swal.fire('錯誤', '目前沒有資料可供匯出', 'error');
                 return;
             }
 
-            // 準備匯出資料：移除內部 _id，將 _votes 改名為易讀名稱
             const exportData = candidatesData.map(item => {
                 const row = {};
-                // 將票數放在第一欄或最後一欄，這裡放第一欄
-                row['最終得票數'] = item._votes;
-                
-                // 複製原始欄位
-                originalColumns.forEach(col => {
-                    row[col] = item[col];
-                });
+                row['最終得票數 (雲端統計)'] = item._votes;
+                originalColumns.forEach(col => { row[col] = item[col]; });
                 return row;
             });
 
-            // 使用 SheetJS 產生 Excel 檔案
             const worksheet = XLSX.utils.json_to_sheet(exportData);
             const workbook = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(workbook, worksheet, "投票結果");
-            
-            // 觸發下載
             XLSX.writeFile(workbook, "投票結果報表.xlsx");
             
-            Swal.fire({
-                icon: 'success',
-                title: '匯出成功',
-                text: '已下載投票結果報表.xlsx',
-                timer: 2000,
-                showConfirmButton: false
-            });
+            Swal.fire({ icon: 'success', title: '匯出成功', text: '已下載包含最新加總的投票結果報表', timer: 2000, showConfirmButton: false });
         }
     </script>
 </body>
