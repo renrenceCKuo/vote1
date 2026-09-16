@@ -348,6 +348,10 @@
                 let nameHTML = nameCol && candidate[nameCol] ? `<h3 class="text-2xl font-bold text-gray-800 truncate">${candidate[nameCol]}</h3>` : '';
                 if (!nameHTML && originalColumns.length > 0) nameHTML = `<h3 class="text-2xl font-bold text-gray-800 truncate">${candidate[originalColumns[0]]}</h3>`;
 
+                // 抓取序號顯示於圓形徽章內
+                let serialCol = originalColumns.find(col => col.includes('序號') || col.includes('號次') || col.includes('編號'));
+                let serialNumber = serialCol && candidate[serialCol] ? candidate[serialCol] : (candidate._id + 1);
+
                 let detailsHTML = '';
                 originalColumns.forEach(col => {
                     if (col !== classCol && col !== nameCol && !col.includes('序號') && !col.includes('編號') && !col.includes('號次') && !col.includes('票數') && !col.includes('得票')) {
@@ -369,8 +373,8 @@
                     <div id="candidate-card-${candidate._id}" class="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden flex flex-col border-2 ${borderClass}">
                         <div class="p-6 flex-grow cursor-pointer" onclick="toggleSelection(${candidate._id})">
                             <div class="flex items-center gap-4 mb-4 pb-4 border-b border-gray-100">
-                                <div class="w-14 h-14 bg-gradient-to-br from-primary to-rose-400 rounded-full flex items-center justify-center text-white text-2xl shadow-sm flex-shrink-0">
-                                    <i class="fa-solid fa-user-tie"></i>
+                                <div class="w-14 h-14 bg-gradient-to-br from-primary to-rose-400 rounded-full flex items-center justify-center text-white text-2xl font-bold shadow-sm flex-shrink-0">
+                                    ${serialNumber}
                                 </div>
                                 <div class="overflow-hidden">
                                     ${nameHTML}
