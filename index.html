@@ -1,587 +1,73 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Excel 匯入型線上投票系統</title>
-    <!-- 載入 Tailwind CSS 用於快速樣式設計 -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- 載入 FontAwesome 圖示庫 -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- 載入 SheetJS 用於解析與匯出 Excel 檔案 -->
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <!-- 載入 SweetAlert2 用於美觀的彈出視窗 -->
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        primary: '#4F46E5',
-                        secondary: '#10B981'
-                    }
-                }
-            }
-        }
-    </script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&display=swap');
-        body {
-            font-family: 'Noto Sans TC', sans-serif;
-            background-color: #F3F4F6;
-        }
-        .fade-in {
-            animation: fadeIn 0.5s ease-in-out;
-        }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-    </style>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>家長委員線上投票系統</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<style>@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap');body{font-family:'Noto Sans TC',sans-serif;background:#f3f4f6}.fade{animation:f .25s ease}@keyframes f{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}</style>
 </head>
 <body class="min-h-screen text-gray-800">
-
-    <nav class="bg-primary text-white shadow-lg sticky top-0 z-50">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex justify-between h-16 items-center">
-                <div class="flex items-center gap-3">
-                    <i class="fa-solid fa-check-to-slot text-2xl"></i>
-                    <span class="font-bold text-xl tracking-wider">115學年度家長會 家長委員票線上投票系統</span>
-                </div>
-                <div id="nav-actions" class="hidden flex gap-2">
-                    <button onclick="switchView('voting-view')" class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white hover:text-primary transition">
-                        <i class="fa-solid fa-users mr-1"></i> 候選人列表
-                    </button>
-                    <button onclick="switchView('results-view')" class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white hover:text-primary transition">
-                        <i class="fa-solid fa-chart-bar mr-1"></i> 查看結果
-                    </button>
-                    <button onclick="exportResults()" class="px-3 py-2 bg-secondary rounded-md text-sm font-medium hover:bg-green-600 transition shadow">
-                        <i class="fa-solid fa-download mr-1"></i> 匯出結果
-                    </button>
-                </div>
-            </div>
-        </div>
-    </nav>
-
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        
-        <!-- 區塊 1：從雲端載入資料畫面 -->
-        <section id="upload-view" class="fade-in max-w-2xl mx-auto mt-10">
-            <div class="bg-white rounded-2xl shadow-xl overflow-hidden">
-                <div class="p-8 text-center">
-                    <div class="w-20 h-20 mx-auto bg-indigo-100 rounded-full flex items-center justify-center mb-6">
-                        <i class="fa-solid fa-cloud-arrow-down text-4xl text-primary"></i>
-                    </div>
-                    <h2 class="text-2xl font-bold mb-2">正在連接雲端資料庫</h2>
-                    <p class="text-gray-500 mb-6">系統將自動從指定的 Google 試算表載入名單，請稍候...<br><span class="text-xs text-gray-400">(來源：1awdlq60JBuo9A...)</span></p>
-                    
-                    <button onclick="loadFromGoogleSheet()" class="bg-primary hover:bg-indigo-700 text-white font-bold py-3 px-8 rounded-xl shadow-md transition-colors text-lg flex items-center justify-center gap-2 mx-auto">
-                        <i class="fa-solid fa-sync"></i> 手動重新載入
-                    </button>
-                </div>
-                <div class="bg-gray-50 px-8 py-4 border-t border-gray-100 flex justify-center">
-                    <button onclick="loadSampleData()" class="text-sm text-primary hover:underline font-medium">
-                        <i class="fa-solid fa-magic mr-1"></i> 無法載入？載入範例資料測試
-                    </button>
-                </div>
-            </div>
-        </section>
-
-        <!-- 區塊 2：投票介面 -->
-        <section id="voting-view" class="hidden fade-in pb-24">
-            <div class="bg-white rounded-xl shadow-md p-6 mb-8 border-t-4 border-primary">
-                <h3 class="text-lg font-bold text-gray-800 mb-4"><i class="fa-solid fa-user-pen mr-2"></i>請輸入您的基本資料 (必填)</h3>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                        <label for="voter-id" class="block text-sm font-medium text-gray-700 mb-1">投票編號</label>
-                        <input type="text" id="voter-id" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition" placeholder="請輸入您的投票編號">
-                    </div>
-                    <div>
-                        <label for="voter-name" class="block text-sm font-medium text-gray-700 mb-1">姓名</label>
-                        <input type="text" id="voter-name" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition" placeholder="請輸入您的姓名">
-                    </div>
-                </div>
-            </div>
-
-            <div class="flex justify-between items-end mb-6">
-                <div>
-                    <h2 class="text-2xl font-bold text-gray-800">請選擇您支持的候選人</h2>
-                    <p class="text-gray-500 mt-1" id="total-candidates-text">共載入 0 位候選人</p>
-                    <p class="text-sm font-medium text-primary mt-2 bg-indigo-50 inline-block px-3 py-1 rounded-md">
-                        <i class="fa-solid fa-circle-info mr-1"></i> 名單已由 Google 試算表同步。投票結果將於雲端自動安全加總。
-                    </p>
-                </div>
-                <div class="text-sm text-gray-500 bg-white px-4 py-2 rounded-full shadow-sm border border-gray-200">
-                    每人限投 1 至 8 票
-                </div>
-            </div>
-            
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="candidates-grid">
-                <!-- 候選人卡片將由 JavaScript 動態生成於此 -->
-            </div>
-
-            <!-- 浮動送出按鈕 -->
-            <div class="fixed bottom-0 left-0 w-full bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] p-4 z-40">
-                <div class="max-w-7xl mx-auto px-4 flex justify-between items-center">
-                    <div class="text-gray-700 font-medium">
-                        已選擇：<span id="selected-count" class="text-primary font-bold text-xl">0</span> / 8
-                    </div>
-                    <button onclick="submitVotes()" class="bg-primary hover:bg-indigo-700 text-white font-bold py-2 px-8 rounded-lg shadow-md transition-colors text-lg flex items-center gap-2">
-                        <i class="fa-solid fa-paper-plane"></i> 確認送出選票
-                    </button>
-                </div>
-            </div>
-        </section>
-
-        <!-- 區塊 3：投票結果 -->
-        <section id="results-view" class="hidden fade-in">
-            <div class="bg-white rounded-2xl shadow-xl p-8">
-                <div class="flex justify-between items-center mb-8 border-b pb-4">
-                    <h2 class="text-2xl font-bold text-gray-800">
-                        <i class="fa-solid fa-trophy text-yellow-500 mr-2"></i>即時投票結果
-                    </h2>
-                    <div class="text-lg font-bold text-primary bg-indigo-50 px-4 py-2 rounded-lg">
-                        總投票數：<span id="total-votes-count">0</span>
-                    </div>
-                </div>
-                
-                <div id="results-container" class="space-y-6">
-                    <!-- 結果進度條將由 JavaScript 動態生成於此 -->
-                </div>
-            </div>
-        </section>
-
-    </main>
-
-    <!-- 頁面最下方版本宣告 -->
-    <footer class="text-center py-6 text-gray-500 text-sm border-t border-gray-200 mt-12 pb-24">
-        C.Kuo Ver1.1
-    </footer>
-
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        // === 【資料庫設定區塊】 ===
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'github-voting-app';
-        
-        // 若要在 GitHub 啟用「雲端多人即時投票」，請在下方大括號內貼上您的 Firebase Config
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
-            // apiKey: "AIzaSy...",
-            // authDomain: "your-project.firebaseapp.com",
-            // projectId: "your-project",
-            // storageBucket: "your-project.appspot.com",
-            // messagingSenderId: "123456789",
-            // appId: "1:123456789:web:abcdefg"
-        };
-
-        let app, db, auth;
-        let isCloudMode = false; // 系統會自動偵測是否啟用雲端資料庫
-
-        // 嘗試初始化資料庫連線
-        try {
-            if (Object.keys(firebaseConfig).length > 0) {
-                app = initializeApp(firebaseConfig);
-                db = getFirestore(app);
-                auth = getAuth(app);
-                isCloudMode = true;
-            }
-        } catch (error) {
-            console.warn("Firebase 設定異常，將切換為本機模式", error);
-        }
-
-        let user = null;
-
-        // 全域狀態變數
-        let candidatesData = [];
-        let totalVotes = 0;
-        let originalColumns = []; 
-        let selectedCandidates = new Set(); 
-
-        // 綁定函式至 window 以供 HTML onclick 呼叫
-        window.loadFromGoogleSheet = loadFromGoogleSheet;
-        window.loadSampleData = loadSampleData;
-        window.switchView = switchView;
-        window.toggleSelection = toggleSelection;
-        window.submitVotes = submitVotes;
-        window.exportResults = exportResults;
-
-        window.addEventListener('DOMContentLoaded', async () => {
-            try {
-                // 1. 無論有沒有資料庫，都強制優先載入 Google 試算表，確保網頁能顯示！
-                await loadFromGoogleSheet();
-
-                // 2. 嘗試登入雲端資料庫 (如果有設定的話)
-                if (isCloudMode) {
-                    if (typeof __initial_auth_token !== 'undefined') {
-                        await signInWithCustomToken(auth, __initial_auth_token);
-                    } else {
-                        await signInAnonymously(auth);
-                    }
-                    user = auth.currentUser;
-                    console.log("【雲端多人投票模式】已連線！");
-                } else {
-                    console.log("【本機單機測試模式】未設定資料庫，選票僅存於此台電腦瀏覽器。");
-                }
-            } catch (error) {
-                console.error("系統初始化發生錯誤", error);
-            }
-        });
-
-        async function loadFromGoogleSheet() {
-            // 已套用您的 Google 試算表 ID，並使用 export 確保資料完整抓取
-            const url = 'https://docs.google.com/spreadsheets/d/1awdlq60JBuo9A2abybu030Vum59zNT7s/export?format=csv';
-            
-            Swal.fire({
-                title: '正在載入最新名單...',
-                allowOutsideClick: false,
-                didOpen: () => Swal.showLoading()
-            });
-
-            try {
-                const response = await fetch(url);
-                if (!response.ok) throw new Error('網路回應錯誤');
-                const csvText = await response.text();
-                
-                if (csvText.trim().toLowerCase().startsWith('<!doctype html>') || csvText.includes('accounts.google.com')) {
-                    throw new Error('Sheet_Is_Private');
-                }
-                
-                const workbook = XLSX.read(csvText, {type: 'string'});
-                const json = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { defval: "" });
-                
-                if (json.length === 0) throw new Error("表格為空");
-                originalColumns = Object.keys(json[0]);
-
-                candidatesData = json.map((row, index) => ({
-                    _id: index, 
-                    _votes: 0,  
-                    ...row      
-                }));
-
-                // 啟動雲端票數即時監聽 (僅雲端模式啟用)
-                if (isCloudMode) listenToVotes();
-
-                Swal.fire({
-                    icon: 'success',
-                    title: '讀取成功！',
-                    text: `共載入 ${candidatesData.length} 筆資料`,
-                    timer: 1500,
-                    showConfirmButton: false
-                });
-
-                initVotingSystem();
-            } catch (error) {
-                console.error(error);
-                if (error.message === 'Sheet_Is_Private') {
-                    Swal.fire({ 
-                        icon: 'error', 
-                        title: '試算表權限未公開', 
-                        html: '請至試算表將共用權限改為<b>「知道連結的人均可檢視」</b>' 
-                    });
-                } else {
-                    Swal.fire({ icon: 'error', title: '載入失敗', text: '請確認試算表網址正確且權限已公開' });
-                }
-            }
-        }
-
-        function listenToVotes() {
-            if (!isCloudMode || !user) return;
-            const votesRef = collection(db, 'artifacts', appId, 'public', 'data', 'votes');
-            
-            onSnapshot(votesRef, (snapshot) => {
-                snapshot.forEach(doc => {
-                    const cid = parseInt(doc.id);
-                    const count = doc.data().count || 0;
-                    const idx = candidatesData.findIndex(c => c._id === cid);
-                    if(idx !== -1) candidatesData[idx]._votes = count;
-                });
-                
-                totalVotes = candidatesData.reduce((sum, c) => sum + c._votes, 0);
-                if (!document.getElementById('results-view').classList.contains('hidden')) {
-                    renderResults();
-                }
-            }, (error) => {
-                console.error("即時更新票數失敗", error);
-            });
-        }
-
-        function loadSampleData() {
-            originalColumns = ['班級', '家長姓名', '政見理念', '經歷'];
-            candidatesData = [
-                { _id: 0, _votes: 0, '班級': '七年一班', '家長姓名': '王小明', '政見理念': '推動...', '經歷': '會長' },
-                { _id: 1, _votes: 0, '班級': '八年二班', '家長姓名': '陳美麗', '政見理念': '增加...', '經歷': '副會長' }
-            ];
-            initVotingSystem();
-            Swal.fire({ icon: 'success', title: '已載入範例', timer: 1000, showConfirmButton: false });
-        }
-
-        function initVotingSystem() {
-            document.getElementById('total-candidates-text').innerText = `共載入 ${candidatesData.length} 筆資料`;
-            document.getElementById('nav-actions').classList.remove('hidden');
-            selectedCandidates.clear(); 
-            updateSelectionUI(); 
-            renderCandidates();
-            renderResults();
-            switchView('voting-view');
-        }
-
-        function switchView(viewId) {
-            document.getElementById('upload-view').classList.add('hidden');
-            document.getElementById('voting-view').classList.add('hidden');
-            document.getElementById('results-view').classList.add('hidden');
-            document.getElementById(viewId).classList.remove('hidden');
-            if(viewId === 'results-view') renderResults(); 
-        }
-
-        function renderCandidates() {
-            const grid = document.getElementById('candidates-grid');
-            grid.innerHTML = '';
-
-            candidatesData.forEach(candidate => {
-                let classCol = originalColumns.find(col => col.includes('班級') || col.includes('班'));
-                let nameCol = originalColumns.find(col => col.includes('家長') || col.includes('姓名') || col.includes('名') || col.includes('稱'));
-
-                let classHTML = classCol && candidate[classCol] ? `<p class="text-lg font-bold text-primary mt-1 truncate">學生班級：${candidate[classCol]}</p>` : '';
-                let nameHTML = nameCol && candidate[nameCol] ? `<h3 class="text-2xl font-bold text-gray-800 truncate">${candidate[nameCol]}</h3>` : '';
-                if (!nameHTML && originalColumns.length > 0) nameHTML = `<h3 class="text-2xl font-bold text-gray-800 truncate">${candidate[originalColumns[0]]}</h3>`;
-
-                // 抓取序號顯示於圓形徽章內
-                let serialCol = originalColumns.find(col => col.includes('序號') || col.includes('號次') || col.includes('編號'));
-                let serialNumber = serialCol && candidate[serialCol] ? candidate[serialCol] : (candidate._id + 1);
-
-                let detailsHTML = '';
-                originalColumns.forEach(col => {
-                    if (col !== classCol && col !== nameCol && !col.includes('序號') && !col.includes('編號') && !col.includes('號次') && !col.includes('票數') && !col.includes('得票')) {
-                        detailsHTML += `
-                            <div class="mb-2">
-                                <span class="text-xs font-bold text-primary bg-rose-50 px-2 py-1 rounded">${col}</span>
-                                <p class="text-sm text-gray-700 mt-1 pl-1 line-clamp-3">${candidate[col]}</p>
-                            </div>
-                        `;
-                    }
-                });
-
-                const isSelected = selectedCandidates.has(candidate._id);
-                const borderClass = isSelected ? 'border-primary bg-rose-50/50' : 'border-transparent';
-                const btnClass = isSelected ? 'bg-primary hover:bg-rose-700 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700';
-                const btnIcon = isSelected ? '<i class="fa-solid fa-check-square"></i> 已選擇' : '<i class="fa-regular fa-square"></i> 選擇';
-
-                const cardHTML = `
-                    <div id="candidate-card-${candidate._id}" class="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden flex flex-col border-2 ${borderClass}">
-                        <div class="p-6 flex-grow cursor-pointer" onclick="toggleSelection(${candidate._id})">
-                            <div class="flex items-center gap-4 mb-4 pb-4 border-b border-gray-100">
-                                <div class="w-14 h-14 bg-gradient-to-br from-primary to-rose-400 rounded-full flex items-center justify-center text-white text-2xl font-bold shadow-sm flex-shrink-0">
-                                    ${serialNumber}
-                                </div>
-                                <div class="overflow-hidden">
-                                    ${nameHTML}
-                                    ${classHTML}
-                                </div>
-                            </div>
-                            <div class="space-y-3">
-                                ${detailsHTML}
-                            </div>
-                        </div>
-                        <div class="p-4 bg-gray-50 border-t border-gray-100">
-                            <button id="btn-select-${candidate._id}" onclick="toggleSelection(${candidate._id})" class="w-full py-3 ${btnClass} font-bold rounded-lg transition-colors shadow-sm flex justify-center items-center gap-2">
-                                ${btnIcon}
-                            </button>
-                        </div>
-                    </div>
-                `;
-                grid.innerHTML += cardHTML;
-            });
-        }
-
-        function toggleSelection(id) {
-            if (selectedCandidates.has(id)) {
-                selectedCandidates.delete(id);
-                updateCardStyling(id, false);
-            } else {
-                if (selectedCandidates.size >= 8) {
-                    Swal.fire({ icon: 'warning', title: '已達上限', text: '每人最多只能選擇 8 位候選人喔！' });
-                    return;
-                }
-                selectedCandidates.add(id);
-                updateCardStyling(id, true);
-            }
-            updateSelectionUI();
-        }
-
-        function updateCardStyling(id, isSelected) {
-            const card = document.getElementById(`candidate-card-${id}`);
-            const btn = document.getElementById(`btn-select-${id}`);
-            if (!card || !btn) return;
-
-            if (isSelected) {
-                card.classList.replace('border-transparent', 'border-primary');
-                card.classList.add('bg-rose-50/50');
-                btn.className = `w-full py-3 bg-primary hover:bg-rose-700 text-white font-bold rounded-lg transition-colors shadow-sm flex justify-center items-center gap-2`;
-                btn.innerHTML = '<i class="fa-solid fa-check-square"></i> 已選擇';
-            } else {
-                card.classList.replace('border-primary', 'border-transparent');
-                card.classList.remove('bg-rose-50/50');
-                btn.className = `w-full py-3 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold rounded-lg transition-colors shadow-sm flex justify-center items-center gap-2`;
-                btn.innerHTML = '<i class="fa-regular fa-square"></i> 選擇';
-            }
-        }
-
-        function updateSelectionUI() {
-            const countSpan = document.getElementById('selected-count');
-            if (countSpan) countSpan.innerText = selectedCandidates.size;
-        }
-
-        async function submitVotes() {
-            const voterId = document.getElementById('voter-id').value.trim();
-            const voterName = document.getElementById('voter-name').value.trim();
-
-            if (!voterId || !voterName) {
-                Swal.fire({ icon: 'warning', title: '資料不完整', text: '請務必輸入您的「投票編號」與「姓名」才能進行投票！' });
-                return;
-            }
-            if (selectedCandidates.size === 0) {
-                Swal.fire({ icon: 'error', title: '尚未選擇', text: '請至少選擇 1 位候選人才能送出選票！' });
-                return;
-            }
-            if (isCloudMode && !user) {
-                Swal.fire({ icon: 'error', title: '系統錯誤', text: '未成功連線至雲端，請重新整理網頁。' });
-                return;
-            }
-
-            // 防重複投票檢查 (區分雲端與單機)
-            if (isCloudMode) {
-                const voterRef = doc(db, 'artifacts', appId, 'public', 'data', 'votedUsers', voterId);
-                const voterSnap = await getDoc(voterRef);
-                if (voterSnap.exists()) {
-                    Swal.fire({ icon: 'error', title: '重複投票', text: `系統紀錄顯示投票編號「${voterId}」已經投過票了！` });
-                    return;
-                }
-            } else {
-                if (localStorage.getItem(`voted_${voterId}`)) {
-                    Swal.fire({ icon: 'error', title: '重複投票', text: `系統紀錄顯示投票編號「${voterId}」已經投過票了！\n(本機測試模式)` });
-                    return;
-                }
-            }
-
-            Swal.fire({
-                title: '確認送出選票?',
-                text: `您總共選擇了 ${selectedCandidates.size} 位候選人。送出後將無法修改。`,
-                icon: 'question',
-                showCancelButton: true,
-                confirmButtonColor: '#E11D48',
-                cancelButtonColor: '#d33',
-                confirmButtonText: '確定送出',
-                cancelButtonText: '返回修改'
-            }).then(async (result) => {
-                if (result.isConfirmed) {
-                    Swal.fire({ title: '正在處理選票...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
-
-                    try {
-                        if (isCloudMode) {
-                            // --- 雲端寫入模式 ---
-                            const voterRef = doc(db, 'artifacts', appId, 'public', 'data', 'votedUsers', voterId);
-                            await setDoc(voterRef, { name: voterName, timestamp: new Date().toISOString() });
-
-                            for (let cid of selectedCandidates) {
-                                const voteRef = doc(db, 'artifacts', appId, 'public', 'data', 'votes', String(cid));
-                                const voteSnap = await getDoc(voteRef);
-                                let currentVotes = voteSnap.exists() ? (voteSnap.data().count || 0) : 0;
-                                await setDoc(voteRef, { count: currentVotes + 1 }, { merge: true });
-                            }
-                        } else {
-                            // --- 本機單機模式 ---
-                            localStorage.setItem(`voted_${voterId}`, new Date().toISOString());
-                            for (let cid of selectedCandidates) {
-                                const idx = candidatesData.findIndex(c => c._id === cid);
-                                if (idx !== -1) candidatesData[idx]._votes += 1;
-                            }
-                            totalVotes += selectedCandidates.size;
-                        }
-                        
-                        Swal.fire({ icon: 'success', title: '投票成功！', text: '您的選票已成功紀錄！', timer: 2000, showConfirmButton: false });
-                        
-                        document.getElementById('voter-id').value = '';
-                        document.getElementById('voter-name').value = '';
-                        selectedCandidates.clear();
-                        updateSelectionUI();
-                        renderCandidates(); 
-                        switchView('results-view');
-
-                    } catch (error) {
-                        console.error("寫入失敗", error);
-                        Swal.fire({ icon: 'error', title: '寫入失敗', text: '傳送過程中發生錯誤，請稍後再試。' });
-                    }
-                }
-            });
-        }
-
-        function renderResults() {
-            const container = document.getElementById('results-container');
-            document.getElementById('total-votes-count').innerText = totalVotes;
-            container.innerHTML = '';
-
-            const sortedData = [...candidatesData].sort((a, b) => b._votes - a._votes);
-            const maxVotes = sortedData.length > 0 && sortedData[0]._votes > 0 ? sortedData[0]._votes : 1;
-
-            sortedData.forEach((candidate, index) => {
-                let classCol = originalColumns.find(col => col.includes('班級') || col.includes('班'));
-                let nameCol = originalColumns.find(col => col.includes('家長') || col.includes('姓名') || col.includes('名') || col.includes('稱'));
-                
-                let displayNameItems = [];
-                if (classCol && candidate[classCol]) displayNameItems.push(candidate[classCol]);
-                if (nameCol && candidate[nameCol]) displayNameItems.push(candidate[nameCol]);
-                let displayName = displayNameItems.length > 0 ? displayNameItems.join(' ') : (candidate[originalColumns[0]] || `候選人 ${candidate._id + 1}`);
-                
-                let percentage = totalVotes === 0 ? 0 : Math.round((candidate._votes / totalVotes) * 100);
-                let barWidth = totalVotes === 0 ? 0 : (candidate._votes / maxVotes) * 100;
-
-                const isFirst = index === 0 && candidate._votes > 0;
-                const barColor = isFirst ? 'bg-yellow-400' : 'bg-primary';
-                const medalHTML = isFirst ? '<i class="fa-solid fa-medal text-yellow-500 ml-2"></i>' : '';
-
-                const rowHTML = `
-                    <div class="relative">
-                        <div class="flex justify-between items-end mb-1">
-                            <span class="text-base font-bold text-gray-700">${displayName} ${medalHTML}</span>
-                            <span class="text-sm font-medium text-gray-600">${candidate._votes} 票 (${percentage}%)</span>
-                        </div>
-                        <div class="w-full bg-gray-200 rounded-full h-4 shadow-inner">
-                            <div class="${barColor} h-4 rounded-full transition-all duration-1000 ease-out flex items-center justify-end px-2" style="width: ${barWidth}%">
-                            </div>
-                        </div>
-                    </div>
-                `;
-                container.innerHTML += rowHTML;
-            });
-        }
-
-        function exportResults() {
-            if (candidatesData.length === 0) {
-                Swal.fire('錯誤', '目前沒有資料可供匯出', 'error');
-                return;
-            }
-
-            const exportData = candidatesData.map(item => {
-                const row = {};
-                row['最終得票數 (系統統計)'] = item._votes;
-                originalColumns.forEach(col => { 
-                    if(!col.includes('序號') && !col.includes('票數') && !col.includes('得票')) {
-                        row[col] = item[col]; 
-                    }
-                });
-                return row;
-            });
-
-            const worksheet = XLSX.utils.json_to_sheet(exportData);
-            const workbook = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(workbook, worksheet, "投票結果");
-            XLSX.writeFile(workbook, "投票結果報表.xlsx");
-            
-            Swal.fire({ icon: 'success', title: '匯出成功', text: '已下載包含最新加總的投票結果報表', timer: 2000, showConfirmButton: false });
-        }
-    </script>
-</body>
-</html>
+<nav class="bg-indigo-600 text-white shadow sticky top-0 z-50"><div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between"><div class="font-bold text-lg md:text-xl"><i class="fa-solid fa-check-to-slot mr-2"></i><span id="navTitle">家長委員線上投票系統</span></div><div class="flex gap-2"><button id="voteNav" class="px-3 py-2 rounded hover:bg-white/15">投票</button><button id="adminNav" class="px-3 py-2 rounded hover:bg-white/15">管理</button></div></div></nav>
+<main class="max-w-7xl mx-auto px-4 py-8">
+<section id="loading" class="max-w-xl mx-auto bg-white p-8 rounded-2xl shadow text-center"><i class="fa-solid fa-cloud-arrow-down text-5xl text-indigo-600 mb-4"></i><h2 class="text-2xl font-bold">正在連線選舉資料</h2><p class="text-gray-500 mt-2">請稍候…</p></section>
+<section id="voteView" class="hidden fade pb-24">
+ <div id="closedBox" class="hidden max-w-2xl mx-auto bg-white rounded-2xl shadow p-10 text-center"><i class="fa-solid fa-lock text-5xl text-gray-400 mb-4"></i><h2 class="text-2xl font-bold">目前尚未開放投票</h2><p class="text-gray-500 mt-2">請依現場工作人員指示操作。</p></div>
+ <div id="voteBox" class="hidden">
+  <div class="bg-white rounded-xl shadow p-6 mb-6 border-t-4 border-indigo-600"><h3 class="font-bold text-lg mb-4">投票人資料</h3><div class="grid md:grid-cols-2 gap-4"><div><label class="text-sm">投票編號</label><input id="voterId" class="w-full border rounded-lg px-4 py-2 mt-1" autocomplete="off"></div><div><label class="text-sm">姓名</label><input id="voterName" class="w-full border rounded-lg px-4 py-2 mt-1" autocomplete="off"></div></div></div>
+  <div class="flex flex-wrap justify-between items-end gap-3 mb-5"><div><h2 class="text-2xl font-bold">請選擇候選人</h2><p id="ruleText" class="text-indigo-600 font-medium mt-1"></p></div><div id="candidateCount" class="text-gray-500"></div></div>
+  <div id="candidateGrid" class="grid md:grid-cols-2 lg:grid-cols-3 gap-5"></div>
+  <div class="fixed bottom-0 left-0 w-full bg-white border-t shadow-lg p-4 z-40"><div class="max-w-7xl mx-auto flex justify-between items-center"><div>已選擇 <b id="selectedCount" class="text-indigo-600 text-xl">0</b> 人</div><button id="submitBtn" class="bg-indigo-600 text-white font-bold px-7 py-3 rounded-lg"><i class="fa-solid fa-paper-plane mr-2"></i>確認送出</button></div></div>
+ </div>
+</section>
+<section id="adminView" class="hidden fade">
+ <div id="adminLogin" class="max-w-md mx-auto bg-white rounded-2xl shadow p-8"><h2 class="text-2xl font-bold mb-5"><i class="fa-solid fa-user-shield mr-2 text-indigo-600"></i>管理者登入</h2><input id="adminEmail" type="email" placeholder="管理者 Email" class="w-full border rounded-lg px-4 py-3 mb-3"><input id="adminPassword" type="password" placeholder="密碼" class="w-full border rounded-lg px-4 py-3 mb-4"><button id="loginBtn" class="w-full bg-indigo-600 text-white py-3 rounded-lg font-bold">登入</button></div>
+ <div id="adminPanel" class="hidden space-y-6">
+  <div class="flex justify-between items-center"><h2 class="text-2xl font-bold">選舉管理</h2><button id="logoutBtn" class="text-red-600">登出</button></div>
+  <div class="grid lg:grid-cols-2 gap-6">
+   <div class="bg-white rounded-xl shadow p-6"><h3 class="font-bold text-lg mb-4">基本設定</h3><label class="text-sm">選舉名稱</label><input id="electionName" class="w-full border rounded px-3 py-2 mb-3"><div class="grid grid-cols-3 gap-3"><div><label class="text-sm">最少投</label><input id="minVotes" type="number" min="1" class="w-full border rounded px-3 py-2"></div><div><label class="text-sm">最多投</label><input id="maxVotes" type="number" min="1" class="w-full border rounded px-3 py-2"></div><div><label class="text-sm">應選</label><input id="seats" type="number" min="1" class="w-full border rounded px-3 py-2"></div></div><div class="mt-4 flex items-center gap-3"><input id="isOpen" type="checkbox" class="w-5 h-5"><label for="isOpen">開放投票</label></div><div class="mt-2 flex items-center gap-3"><input id="showResults" type="checkbox" class="w-5 h-5"><label for="showResults">投票端公開即時結果</label></div><button id="saveSettings" class="mt-5 bg-indigo-600 text-white px-5 py-2 rounded font-bold">儲存設定</button></div>
+   <div class="bg-white rounded-xl shadow p-6"><h3 class="font-bold text-lg mb-4">Excel 匯入</h3><p class="text-sm text-gray-500 mb-3">候選人：第一列為欄名，建議包含「編號、班級、姓名」。投票人名冊：需包含「投票編號、姓名」。</p><label class="block font-medium mb-1">候選人 Excel</label><input id="candidateFile" type="file" accept=".xlsx,.xls,.csv" class="w-full mb-4"><button id="importCandidates" class="bg-emerald-600 text-white px-4 py-2 rounded">匯入候選人</button><hr class="my-5"><label class="block font-medium mb-1">投票人名冊 Excel</label><input id="voterFile" type="file" accept=".xlsx,.xls,.csv" class="w-full mb-4"><button id="importVoters" class="bg-emerald-600 text-white px-4 py-2 rounded">匯入投票人</button></div>
+  </div>
+  <div class="grid md:grid-cols-4 gap-4"><div class="bg-white rounded-xl shadow p-5"><div class="text-gray-500">候選人</div><div id="statCandidates" class="text-3xl font-bold">0</div></div><div class="bg-white rounded-xl shadow p-5"><div class="text-gray-500">合格投票人</div><div id="statEligible" class="text-3xl font-bold">0</div></div><div class="bg-white rounded-xl shadow p-5"><div class="text-gray-500">已投票人數</div><div id="statTurnout" class="text-3xl font-bold">0</div></div><div class="bg-white rounded-xl shadow p-5"><div class="text-gray-500">投票率</div><div id="statRate" class="text-3xl font-bold">0%</div></div></div>
+  <div class="bg-white rounded-xl shadow p-6"><div class="flex flex-wrap justify-between gap-3 mb-5"><h3 class="font-bold text-xl">即時開票</h3><div class="flex gap-2"><button id="exportBtn" class="bg-emerald-600 text-white px-4 py-2 rounded">匯出結果</button><button id="resetBtn" class="bg-red-600 text-white px-4 py-2 rounded">清除本次票數</button></div></div><div id="adminResults" class="space-y-4"></div></div>
+ </div>
+</section>
+<section id="publicResults" class="hidden fade mt-6"><div class="bg-white rounded-xl shadow p-6"><h2 class="text-2xl font-bold mb-5">即時投票結果</h2><div id="publicResultsRows" class="space-y-4"></div></div></section>
+</main>
+<footer class="text-center text-sm text-gray-500 py-8">C.Kuo Voting System Ver2.0</footer>
+<script type="module">
+import {initializeApp} from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
+import {getAuth,signInAnonymously,signInWithEmailAndPassword,signOut,onAuthStateChanged} from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
+import {getFirestore,doc,getDoc,setDoc,collection,onSnapshot,getDocs,writeBatch,deleteDoc} from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+import {getFunctions,httpsCallable} from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-functions.js';
+// ===== 部署前只需填入 Firebase 專案設定 =====
+const firebaseConfig = {
+ apiKey: "YOUR_API_KEY", authDomain: "YOUR_PROJECT.firebaseapp.com", projectId: "YOUR_PROJECT_ID",
+ storageBucket: "YOUR_PROJECT.firebasestorage.app", messagingSenderId: "YOUR_SENDER_ID", appId: "YOUR_APP_ID"
+};
+const app=initializeApp(firebaseConfig), auth=getAuth(app), db=getFirestore(app), functions=getFunctions(app,'asia-east1');
+const electionRef=doc(db,'config','election'); let settings={name:'家長委員線上投票系統',minVotes:1,maxVotes:8,seats:8,isOpen:false,showResults:false}; let candidates=[],selected=new Set(),admin=false,turnout=0,eligible=0;
+const $=id=>document.getElementById(id); const esc=s=>String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+function view(v){['loading','voteView','adminView','publicResults'].forEach(x=>$(x).classList.add('hidden')); $(v).classList.remove('hidden')}
+$('voteNav').onclick=()=>{view('voteView');renderVoteState()}; $('adminNav').onclick=()=>{view('adminView');renderAdminAuth()};
+async function boot(){try{await signInAnonymously(auth);onSnapshot(electionRef,s=>{if(s.exists())settings={...settings,...s.data()};applySettings()});onSnapshot(collection(db,'candidates'),s=>{candidates=s.docs.map(d=>({id:d.id,...d.data()}));renderCandidates();renderResults();$('statCandidates').textContent=candidates.length});onSnapshot(collection(db,'ballots'),s=>{turnout=s.size;renderStats()});onSnapshot(collection(db,'eligibleVoters'),s=>{eligible=s.size;renderStats()});view('voteView');renderVoteState()}catch(e){console.error(e);Swal.fire('連線失敗','請確認 Firebase 設定與部署是否完成。','error')}} boot();
+function applySettings(){$('navTitle').textContent=settings.name;$('electionName').value=settings.name;$('minVotes').value=settings.minVotes;$('maxVotes').value=settings.maxVotes;$('seats').value=settings.seats;$('isOpen').checked=!!settings.isOpen;$('showResults').checked=!!settings.showResults;$('ruleText').textContent=`每人可投 ${settings.minVotes} 至 ${settings.maxVotes} 人；應選 ${settings.seats} 人`;renderVoteState()}
+function renderVoteState(){if(!$('voteView').classList.contains('hidden')){$('closedBox').classList.toggle('hidden',settings.isOpen);$('voteBox').classList.toggle('hidden',!settings.isOpen);$('publicResults').classList.toggle('hidden',!settings.showResults)}}
+function findKey(o,words){return Object.keys(o).find(k=>words.some(w=>k.includes(w)))}
+function renderCandidates(){$('candidateCount').textContent=`共 ${candidates.length} 位候選人`;$('candidateGrid').innerHTML=candidates.map((c,i)=>{let nk=findKey(c,['家長姓名','姓名','家長','名稱']),ck=findKey(c,['班級','班']),num=findKey(c,['編號','號次','序號']);let skip=new Set(['id','votes',nk,ck,num]);let details=Object.keys(c).filter(k=>!skip.has(k)).map(k=>`<div><span class="text-xs bg-indigo-50 text-indigo-700 px-2 py-1 rounded">${esc(k)}</span><p class="text-sm mt-1">${esc(c[k])}</p></div>`).join('');let on=selected.has(c.id);return `<div class="bg-white rounded-xl shadow border-2 ${on?'border-indigo-600':'border-transparent'} overflow-hidden cursor-pointer" data-id="${esc(c.id)}"><div class="p-5"><div class="flex gap-3 items-center border-b pb-3 mb-3"><div class="w-12 h-12 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold">${esc(c[num]||i+1)}</div><div><h3 class="text-xl font-bold">${esc(c[nk]||'候選人')}</h3>${c[ck]?`<div class="text-indigo-600 font-medium">學生班級：${esc(c[ck])}</div>`:''}</div></div><div class="space-y-2">${details}</div></div><div class="p-3 bg-gray-50 text-center font-bold ${on?'text-indigo-600':''}">${on?'✓ 已選擇':'點選此候選人'}</div></div>`}).join('');document.querySelectorAll('#candidateGrid [data-id]').forEach(el=>el.onclick=()=>toggle(el.dataset.id));$('selectedCount').textContent=selected.size}
+function toggle(id){if(selected.has(id))selected.delete(id);else if(selected.size>=settings.maxVotes)return Swal.fire('已達上限',`最多只能選 ${settings.maxVotes} 人`,'warning');else selected.add(id);renderCandidates()}
+$('submitBtn').onclick=async()=>{let voterId=$('voterId').value.trim(),name=$('voterName').value.trim();if(!voterId||!name)return Swal.fire('資料不完整','請輸入投票編號與姓名。','warning');if(selected.size<settings.minVotes||selected.size>settings.maxVotes)return Swal.fire('票數不符',`請選擇 ${settings.minVotes} 至 ${settings.maxVotes} 人。`,'warning');let r=await Swal.fire({title:'確認送出選票？',text:`您選擇了 ${selected.size} 位候選人，送出後無法修改。`,icon:'question',showCancelButton:true,confirmButtonText:'確定送出',cancelButtonText:'返回'});if(!r.isConfirmed)return;try{Swal.fire({title:'正在送出…',allowOutsideClick:false,didOpen:()=>Swal.showLoading()});let submit=httpsCallable(functions,'submitVote');await submit({voterId,name,candidateIds:[...selected]});await Swal.fire('投票成功','選票已安全寫入。','success');selected.clear();$('voterId').value='';$('voterName').value='';renderCandidates()}catch(e){console.error(e);Swal.fire('無法送出',e?.message?.replace('FirebaseError: ','')||'請洽管理者。','error')}};
+function renderResults(){let arr=[...candidates].sort((a,b)=>(b.votes||0)-(a.votes||0));let max=Math.max(1,...arr.map(x=>x.votes||0));let rows=arr.map((c,i)=>{let nk=findKey(c,['家長姓名','姓名','家長','名稱']),ck=findKey(c,['班級','班']);let tiedBoundary=settings.seats>0&&i>=settings.seats-1&&arr[settings.seats-1]&&arr[settings.seats]&&(arr[settings.seats-1].votes||0)===(arr[settings.seats].votes||0)&&(c.votes||0)===(arr[settings.seats-1].votes||0);return `<div><div class="flex justify-between"><b>${i+1}. ${esc(c[ck]||'')} ${esc(c[nk]||c.id)} ${tiedBoundary?'<span class="text-amber-600">（應選線同票）</span>':''}</b><span>${c.votes||0} 票</span></div><div class="h-3 bg-gray-200 rounded mt-1"><div class="h-3 bg-indigo-600 rounded" style="width:${((c.votes||0)/max)*100}%"></div></div></div>`}).join('');$('adminResults').innerHTML=rows||'<p class="text-gray-500">尚無候選人資料</p>';$('publicResultsRows').innerHTML=rows}
+function renderStats(){$('statEligible').textContent=eligible;$('statTurnout').textContent=turnout;$('statRate').textContent=eligible?`${Math.round(turnout/eligible*100)}%`:'0%'}
+onAuthStateChanged(auth,u=>{admin=!!u&&!u.isAnonymous;renderAdminAuth()});function renderAdminAuth(){$('adminLogin').classList.toggle('hidden',admin);$('adminPanel').classList.toggle('hidden',!admin)}
+$('loginBtn').onclick=async()=>{try{await signOut(auth);await signInWithEmailAndPassword(auth,$('adminEmail').value.trim(),$('adminPassword').value)}catch(e){Swal.fire('登入失敗','請確認管理者帳號密碼。','error');await signInAnonymously(auth)}};$('logoutBtn').onclick=async()=>{await signOut(auth);await signInAnonymously(auth)};
+$('saveSettings').onclick=async()=>{if(!admin)return;let data={name:$('electionName').value.trim()||'家長委員線上投票系統',minVotes:+$('minVotes').value,maxVotes:+$('maxVotes').value,seats:+$('seats').value,isOpen:$('isOpen').checked,showResults:$('showResults').checked};if(data.minVotes<1||data.maxVotes<data.minVotes||data.seats<1)return Swal.fire('設定錯誤','請檢查票數與應選人數。','warning');await setDoc(electionRef,data);Swal.fire('已儲存','','success')};
+async function readExcel(file){let buf=await file.arrayBuffer(),wb=XLSX.read(buf),ws=wb.Sheets[wb.SheetNames[0]];return XLSX.utils.sheet_to_json(ws,{defval:''})}
+async function clearCollection(name){let s=await getDocs(collection(db,name));for(let i=0;i<s.docs.length;i+=400){let b=writeBatch(db);s.docs.slice(i,i+400).forEach(d=>b.delete(d.ref));await b.commit()}}
+$('importCandidates').onclick=async()=>{let f=$('candidateFile').files[0];if(!f)return Swal.fire('請選擇檔案','','warning');let rows=await readExcel(f);if(!rows.length)return;let ok=await Swal.fire({title:`匯入 ${rows.length} 位候選人？`,text:'將取代目前候選人名單。建議只在尚未投票時操作。',showCancelButton:true});if(!ok.isConfirmed)return;await clearCollection('candidates');for(let i=0;i<rows.length;i+=400){let b=writeBatch(db);rows.slice(i,i+400).forEach((r,j)=>b.set(doc(db,'candidates',String(i+j+1).padStart(4,'0')),{...r,votes:0}));await b.commit()}Swal.fire('匯入完成','','success')};
+$('importVoters').onclick=async()=>{let f=$('voterFile').files[0];if(!f)return Swal.fire('請選擇檔案','','warning');let rows=await readExcel(f),idKey=rows[0]&&findKey(rows[0],['投票編號','編號','代碼']),nameKey=rows[0]&&findKey(rows[0],['姓名','家長']);if(!idKey||!nameKey)return Swal.fire('格式錯誤','找不到「投票編號」或「姓名」欄位。','error');await clearCollection('eligibleVoters');for(let i=0;i<rows.length;i+=400){let b=writeBatch(db);rows.slice(i,i+400).forEach(r=>{let id=String(r[idKey]).trim();if(id)b.set(doc(db,'eligibleVoters',id),{name:String(r[nameKey]).trim()})});await b.commit()}Swal.fire('匯入完成','','success')};
+$('resetBtn').onclick=async()=>{let r=await Swal.fire({title:'確定清除全部票數？',text:'此動作無法復原。',icon:'warning',showCancelButton:true,confirmButtonText:'確定清除'});if(!r.isConfirmed)return;await clearCollection('ballots');let s=await getDocs(collection(db,'candidates'));for(let i=0;i<s.docs.length;i+=400){let b=writeBatch(db);s.docs.slice(i,i+400).forEach(d=>b.update(d.ref,{votes:0}));await b.commit()}Swal.fire('已清除','','success')};
+$('exportBtn').onclick=()=>{let arr=[...candidates].sort((a,b)=>(b.votes||0)-(a.votes||0)).map((c,i)=>({排名:i+1,得票數:c.votes||0,...Object.fromEntries(Object.entries(c).filter(([k])=>!['id','votes'].includes(k)))}));let ws=XLSX.utils.json_to_sheet(arr),wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'投票結果');XLSX.writeFile(wb,`${settings.name}-投票結果.xlsx`)};
+</script></body></html>
